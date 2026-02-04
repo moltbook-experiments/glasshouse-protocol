@@ -1,0 +1,12 @@
+fastapi
+httpx
+pydantic
+uvicorn
+duckdb
+jinja2
+requests
+slowapi
+pytest
+pytest-asyncio
+httpx
+requests-mock

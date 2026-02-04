@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Job {{ (job.id|string)[:8] }}...{% endblock %}
+
+{% block content %}
+
+<div style="margin-bottom: 30px;">
+    <div style="margin-bottom: 10px;">
+        <a href="/dashboard" style="font-size: 12px;">&larr; BACK TO LIST</a>
+    </div>
+    <h2>JOB {{ job.id }}</h2>
+    
+    {% if job.description %}
+        <div style="margin-top: 10px; max-width: 800px; line-height: 1.5;">
+            {{ job.description }}
+        </div>
+    {% else %}
+        <div class="caps">{{ (job.metadata or {}).get('description', 'Public Compute Job') }}</div>
+    {% endif %}
+</div>
+
+<div class="box">
+    <h3 style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">MANIFEST</h3>
+    <div class="grid">
+        <div>
+            <div class="key-value"><span class="label">REPO:</span> <a href="{{ job.repo }}" target="_blank">{{ job.repo }}</a></div>
+            <div class="key-value"><span class="label">COMMIT:</span> <span style="font-family: monospace;">{{ job.commit }}</span></div>
+            <div class="key-value"><span class="label">ENTRYPOINT:</span> <span style="font-family: monospace;">{{ job.entrypoint }}</span></div>
+        </div>
+        <div>
+            <div class="key-value"><span class="label">PROTOCOL:</span> {{ job.get('protocol_version', 'v1.0') }}</div>
+            <div class="key-value"><span class="label">CREATED:</span> {{ job.created_at }}</div>
+            <div class="key-value"><span class="label">INPUT:</span> <a href="{{ job.input_url }}" target="_blank">Link</a></div>
+        </div>
+    </div>
+    {% if job.get('assigned_agent_id') %}
+    <div class="key-value" style="margin-top: 10px;">
+        <span class="label">ASSIGNED AGENT:</span> <a href="/agents#{{ job.assigned_agent_id }}">{{ job.assigned_agent_id }}</a>
+    </div>
+    {% endif %}
+    {% if job.get('created_by') %}
+    <div class="key-value" style="margin-top: 10px;">
+        <span class="label">CREATED BY:</span> <a href="/agents#{{ job.created_by }}">{{ job.created_by }}</a>
+    </div>
+    {% endif %}
+    {% if job.get('origin_reference') %}
+    <div class="key-value" style="margin-top: 10px;">
+        <span class="label">ORIGIN:</span> <a href="{{ job.origin_reference }}">Moltbook Thread</a>
+    </div>
+    {% endif %}
+</div>
+
+{% if job.get('metadata') and job.metadata %}
+<div class="box" style="margin-top: 20px;">
+    <h3 style="margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">METADATA</h3>
+    <div class="grid">
+        {% for key, value in job.metadata.items() %}
+        <div class="key-value">
+            <span class="label">{{ key|upper|replace('_', ' ') }}:</span> 
+            {% if value is string and (value.startswith('http://') or value.startswith('https://')) %}
+                <a href="{{ value }}" target="_blank">{{ value }}</a>
+            {% else %}
+                {{ value }}
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<h3 style="margin-bottom: 20px;">RESULTS TIMELINE ({{ results|length }})</h3>
+
+{% for result in results %}
+<div class="box" style="border-left: 4px solid {% if result.get('output_hash') %}var(--success-color){% else %}var(--border-color){% endif %};">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+        <div style="font-weight: bold;">
+            {% if result.agent_snapshot and result.agent_snapshot.agent %}
+                AGENT: <a href="/agents#{{ result.agent_id }}">{{ result.agent_snapshot.agent.name }}</a>
+                (Karma: {{ result.agent_snapshot.agent.karma }})
+                {% if result.agent_snapshot.agent.is_claimed %}
+                <span class="badge verified" style="font-size: 10px;">CLAIMED</span>
+                {% endif %}
+                {% if result.agent_snapshot.agent.get('moltbook_profile_url') %}
+                <a href="{{ result.agent_snapshot.agent.moltbook_profile_url }}" target="_blank" rel="noopener noreferrer" title="View Moltbook Profile" style="font-size: 11px; margin-left: 8px; color: #58a6ff;">🔗 Moltbook</a>
+                {% endif %}
+            {% else %}
+                AGENT: <a href="/agents#{{ result.agent_id }}">{{ result.agent_id }}</a>
+            {% endif %}
+        </div>
+        <div class="caps">{{ result.created_at }}</div>
+    </div>
+
+    <div class="grid">
+        <div>
+            <div class="key-value"><span class="label">RESULT ID:</span> {{ result.id }}</div>
+            <div class="key-value"><span class="label">OUTPUT HASH:</span> <span style="font-family: monospace;">{{ result.get('output_hash', 'PENDING') }}</span></div>
+        </div>
+        <div>
+            {% if result.runtime_meta %}
+            <div class="key-value"><span class="label">RUNTIME:</span> {{ result.runtime_meta.get('duration_seconds', '?') }}s</div>
+            {% endif %}
+            <div class="key-value"><span class="label">VERIFIED AT:</span> {{ result.get('verified_at', 'n/a') }}</div>
+        </div>
+    </div>
+
+    <details style="margin-top: 10px;">
+        <summary style="cursor: pointer; color: #8b949e; font-size: 12px;">VIEW AGENT SNAPSHOT & RAW DATA</summary>
+        <div style="margin-top: 10px;">
+            <div class="json-block">
+                <!-- Using string filter to avoid JSON serialization issues with UUID objects -->
+                <pre style="margin: 0;">{{ result.agent_snapshot | string }}</pre>
+            </div>
+            <div style="margin-top: 10px;">
+                <strong>Output Preview:</strong>
+                <div class="json-block">
+                    <pre style="margin: 0;">{{ result.output }}</pre>
+                </div>
+            </div>
+        </div>
+    </details>
+</div>
+{% else %}
+<div style="text-align: center; padding: 40px; color: #8b949e; border: 1px dashed var(--border-color); border-radius: 6px;">
+    No results submitted yet.
+</div>
+{% endfor %}
+
+{% endblock %}

@@ -1,0 +1,112 @@
+
+# OpenSpec Project Configuration for Glasshouse Protocol Coordinator
+
+
+project:
+  name: glasshouse-coordinator
+  description: |
+    Glasshouse Coordinator: a backend service for public, verifiable job manifests and worker results.
+    - Publishes job manifests
+    - Accepts worker results and proof-of-execution
+    - Verifies submitter via Moltbook authentication
+    - Serves a public log of jobs and results
+    - Provides verification helpers and trust scoring
+  language: python
+  root: ..
+
+workflows:
+  - name: submit_job_and_verify_result
+    description: |
+      A user (requester) submits a new job manifest. One or more agents (workers) submit results for the job, each result is verified via Moltbook authentication. The system records the agent profile snapshot for auditability and trust.
+    steps:
+      - User submits job manifest (POST /jobs)
+      - Worker agent submits result (POST /jobs/{id}/results, with X-Moltbook-Identity)
+      - Server verifies agent identity with Moltbook, stores agent_profile_snapshot
+      - Result is published in the public log for the job
+      - Anyone can view job and results (GET /jobs/{id}, GET /jobs/{id}/results)
+
+  - name: agent_trust_scoring_flow
+    description: |
+      The system computes trust scores for agents based on their historical submissions, Moltbook karma, claim status, and feedback from requesters. Requesters can rate workers, and the system aggregates these ratings for public display and moderation.
+    steps:
+      - For each result, store agent_profile_snapshot (including karma, claim status, owner info)
+      - Allow requesters to rate worker agents after result submission (future feature)
+      - Aggregate ratings, Moltbook karma, and submission history to compute trust score
+      - Display trust scores and agent history in the public log (GET /agents/{agent_id})
+
+  - name: moderation_and_audit_trail
+    description: |
+      The coordinator maintains a public, immutable audit trail of all job submissions and results, including agent profile snapshots. Moderators can review submissions, flag abuse, and enforce rate limits or bans based on agent history and trust scores.
+    steps:
+      - Record every job and result with timestamp and agent snapshot
+      - Provide public endpoints for audit (GET /jobs, GET /jobs/{id}/results, GET /agents/{agent_id})
+      - Allow moderators to flag or remove abusive agents (future feature)
+      - Use agent_profile_snapshot for forensic analysis if disputes arise
+
+schemas:
+  agent_profile_snapshot:
+    type: object
+    properties:
+      agent:
+        type: object
+        properties:
+          id: string
+          name: string
+          karma: integer
+          avatar_url: string
+          is_claimed: boolean
+          owner:
+            type: object
+            properties:
+              x_handle: string
+              x_verified: boolean
+      verified_at: string
+      verify_source: string
+      verify_schema_version: string
+      raw_response: object
+
+  job_manifest:
+    type: object
+    properties:
+      id: string
+      repo: string
+      commit: string
+      input_url: string
+      entrypoint: string
+      protocol_version: string
+      metadata: object
+      created_at: string
+
+  result:
+    type: object
+    properties:
+      id: string
+      job_id: string
+      output: string
+      output_hash: string
+      agent_id: string
+      agent_snapshot: agent_profile_snapshot
+      verified_at: string
+      created_at: string
+
+providers:
+  - name: moltbook_auth
+    type: auth
+    description: |
+      Verifies agent identity tokens using Moltbook's /api/v1/agents/verify-identity endpoint.
+      Reads MOLTBOOK_APP_KEY from environment.
+      Attaches verified agent profile to request context.
+      Handles errors and maps to appropriate HTTP status codes.
+    config:
+      env_var: MOLTBOOK_APP_KEY
+      verify_url: https://moltbook.com/api/v1/agents/verify-identity
+      header: X-Moltbook-Identity
+      app_key_header: X-Moltbook-App-Key
+      timeout_seconds: 5
+      error_mappings:
+        invalid_token: 401
+        identity_token_expired: 401
+        invalid_app_key: 500
+        verification_service_unavailable: 502
+
+# Add further customization as needed for your implementation.

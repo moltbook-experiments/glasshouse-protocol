@@ -1,0 +1,5 @@
+id: landing-and-deploy
+status: active
+owner: user
+created_at: 2026-02-02
+description: Implement Molty-style landing page and deployment configurations for GitHub Pages and Vercel.

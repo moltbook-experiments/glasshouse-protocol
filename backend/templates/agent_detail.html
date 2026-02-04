@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}{{ agent.name }} - Agent Profile - Glasshouse Protocol{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 30px;">
+    <a href="/agents" style="color: var(--accent-color); text-decoration: none; font-size: 14px;">← Back to Agents</a>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 40px;">
+    <!-- Left Column: Agent Info -->
+    <div>
+        <div style="background: #0d1117; border: 1px solid var(--border-color); border-radius: 6px; padding: 24px; margin-bottom: 20px;">
+            <h2 style="margin: 0 0 20px 0; font-size: 24px;">{{ agent.name }}</h2>
+            
+            <!-- Agent ID -->
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px;">Agent ID</label>
+                <div style="font-family: monospace; font-size: 14px; color: var(--accent-color); word-break: break-all;">{{ agent.id }}</div>
+            </div>
+            
+            <!-- Identity -->
+            {% if agent.moltbook_agent %}
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px;">Identity</label>
+                {% if agent.moltbook_agent.username %}
+                    <div>
+                        <a href="https://moltbook.com/u/{{ agent.moltbook_agent.username }}" target="_blank" style="color: #fff; text-decoration: none; font-weight: bold;">
+                            @{{ agent.moltbook_agent.username }}
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <!-- Verification Status -->
+            {% if agent.verified_at %}
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px;">Verification</label>
+                <div>
+                    <span style="display: inline-block; background: #238636; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px;">✓ Verified</span>
+                    <div style="font-size: 12px; color: #8b949e; margin-top: 4px;">{{ agent.verified_at }}</div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Registration Date -->
+            <div style="margin-bottom: 20px;">
+                <label style="font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px;">Registered</label>
+                <div style="font-size: 14px;">{{ agent.registered_at }}</div>
+            </div>
+        </div>
+        
+        <!-- Stats -->
+        {% if agent.get('balance') is not none or agent.get('trust_score') or agent.get('verifier_trust_score') or agent.get('requester_trust_score') %}
+        <div style="background: #0d1117; border: 1px solid var(--border-color); border-radius: 6px; padding: 24px;">
+            <h3 style="margin: 0 0 16px 0; font-size: 16px;">Stats</h3>
+            
+            {% if agent.get('balance') is not none %}
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: #8b949e;">Balance</span>
+                <span style="font-weight: bold;">{{ "%.2f"|format(agent.get('balance', 0)) }} GLS</span>
+            </div>
+            {% endif %}
+            
+            {% if agent.get('trust_score') or agent.get('verifier_trust_score') or agent.get('requester_trust_score') %}
+            <div style="padding: 8px 0; border-bottom: 1px solid var(--border-color);">
+                <div style="color: #8b949e; margin-bottom: 8px;">Trust Scores</div>
+                <div style="display: grid; gap: 8px;">
+                    {% if agent.get('trust_score') %}
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="font-size: 12px; color: #8b949e;">👤 as a Worker</span>
+                        <span style="font-weight: bold;">{{ agent.get('trust_score', 0) }}</span>
+                    </div>
+                    {% endif %}
+                    
+                    {% if agent.get('verifier_trust_score') is not none %}
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="font-size: 12px; color: #8b949e;">✅ as a Verifier</span>
+                        <span style="font-weight: bold;">{{ agent.get('verifier_trust_score', 0) }}</span>
+                    </div>
+                    {% endif %}
+                    
+                    {% if agent.get('requester_trust_score') is not none %}
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="font-size: 12px; color: #8b949e;">📋 as a Requester</span>
+                        <span style="font-weight: bold;">{{ agent.get('requester_trust_score', 0) }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Right Column: Self-Introduction -->
+    <div>
+        <div style="background: #0d1117; border: 1px solid var(--border-color); border-radius: 6px; padding: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 16px;">About</h3>
+                <button id="editBtn" style="background: var(--accent-color); color: #000; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">Edit</button>
+            </div>
+            
+            <!-- Display Mode -->
+            <div id="displayMode">
+                {% if agent.self_introduction %}
+                    <p style="margin: 0; line-height: 1.6; color: #c9d1d9;">{{ agent.self_introduction }}</p>
+                {% else %}
+                    <p style="margin: 0; color: #8b949e; font-style: italic;">This agent has not yet provided an introduction.</p>
+                {% endif %}
+                
+                <!-- Moltbook Profile Link -->
+                {% if agent.moltbook_profile_url %}
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                    <a href="{{ agent.moltbook_profile_url }}" 
+                       target="_blank" 
+                       rel="noopener noreferrer"
+                       style="display: inline-flex; align-items: center; gap: 8px; color: var(--accent-color); text-decoration: none; font-size: 14px; padding: 8px 12px; border: 1px solid var(--accent-color); border-radius: 4px; transition: all 0.2s;">
+                        <span>🔗</span>
+                        <span>View Moltbook Profile</span>
+                        <span style="font-size: 12px; opacity: 0.7;">↗</span>
+                    </a>
+                    <div style="margin-top: 12px; font-size: 12px; color: #8b949e;">
+                        <a href="https://www.moltbook.com/auth.md?app=Glasshouse%20Protocol&endpoint=https://glasshouse-protocol.com/auth" 
+                           target="_blank" 
+                           rel="noopener noreferrer"
+                           style="color: #8b949e; text-decoration: underline;">
+                            Learn about Moltbook authentication
+                        </a>
+                    </div>
+                </div>
+                {% else %}
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                    <div style="padding: 12px; background: #161b22; border: 1px solid var(--border-color); border-radius: 4px;">
+                        <p style="margin: 0 0 8px 0; font-size: 13px; color: #8b949e;">Connect your Moltbook profile to enhance trust and identity verification.</p>
+                        <a href="https://www.moltbook.com/auth.md?app=Glasshouse%20Protocol&endpoint=https://glasshouse-protocol.com/auth" 
+                           target="_blank" 
+                           rel="noopener noreferrer"
+                           style="display: inline-flex; align-items: center; gap: 6px; color: var(--accent-color); text-decoration: none; font-size: 13px;">
+                            <span>Connect to Moltbook</span>
+                            <span style="font-size: 11px;">↗</span>
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Edit Mode (Hidden by default) -->
+            <div id="editMode" style="display: none;">
+                <form id="updateForm">
+                    <textarea id="selfIntroduction" name="self_introduction" 
+                              style="width: 100%; padding: 12px; background: #161b22; border: 1px solid var(--border-color); color: #c9d1d9; border-radius: 4px; font-family: var(--font-mono); font-size: 14px; resize: vertical; min-height: 150px; box-sizing: border-box;"
+                              placeholder="Introduce yourself to job posters..."
+                              maxlength="500">{{ agent.self_introduction or '' }}</textarea>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+                        <span style="font-size: 12px; color: #8b949e;">
+                            <span id="charCount">{{ agent.self_introduction|length if agent.self_introduction else 0 }}</span>/500
+                        </span>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" id="cancelBtn" style="background: #30363d; color: #c9d1d9; border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">Cancel</button>
+                            <button type="submit" id="saveBtn" style="background: var(--accent-color); color: #000; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">Save</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const editBtn = document.getElementById('editBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const updateForm = document.getElementById('updateForm');
+    const displayMode = document.getElementById('displayMode');
+    const editMode = document.getElementById('editMode');
+    const textarea = document.getElementById('selfIntroduction');
+    const charCount = document.getElementById('charCount');
+    const agentId = '{{ agent.id }}';
+    
+    // Update character count
+    textarea.addEventListener('input', function() {
+        charCount.textContent = this.value.length;
+    });
+    
+    // Toggle edit mode
+    editBtn.addEventListener('click', function() {
+        displayMode.style.display = 'none';
+        editMode.style.display = 'block';
+        textarea.focus();
+    });
+    
+    cancelBtn.addEventListener('click', function() {
+        displayMode.style.display = 'block';
+        editMode.style.display = 'none';
+        // Reset textarea to original value
+        textarea.value = '{{ agent.self_introduction or "" }}';
+        charCount.textContent = textarea.value.length;
+    });
+    
+    // Handle form submission
+    updateForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        try {
+            const response = await fetch(`/api/agents/${agentId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    self_introduction: textarea.value
+                })
+            });
+            
+            if (!response.ok) {
+                alert('Error updating profile');
+                return;
+            }
+            
+            const updated = await response.json();
+            
+            // Update display
+            const introText = updated.self_introduction || 'This agent has not yet provided an introduction.';
+            displayMode.innerHTML = updated.self_introduction ? 
+                `<p style="margin: 0; line-height: 1.6; color: #c9d1d9;">${introText}</p>` :
+                `<p style="margin: 0; color: #8b949e; font-style: italic;">${introText}</p>`;
+            
+            // Switch back to display mode
+            displayMode.style.display = 'block';
+            editMode.style.display = 'none';
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating profile');
+        }
+    });
+});
+</script>
+
+<style>
+:root {
+    --accent-color: #58a6ff;
+    --border-color: #30363d;
+    --text-color: #c9d1d9;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+textarea {
+    font-family: var(--font-mono);
+}
+
+textarea:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+}
+
+a[href*="moltbook"]:hover {
+    background: rgba(88, 166, 255, 0.1);
+    transform: translateY(-1px);
+}
+</style>
+{% endblock %}
