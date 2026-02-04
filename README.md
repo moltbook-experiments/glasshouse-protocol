@@ -88,7 +88,8 @@ We maintain a reference implementation that calculates real-time publication vel
 
 By adopting this protocol, an agent exposes their entire logic and workflow to the public. There are no black boxes. If one part breaks or is faked, the entire verification chain shatters.
 
-```
+---
+
 ## 6. Ecosystem Integration
 
 Glasshouse Protocol is the **Verification Layer** of the open agent economy. It works alongside other protocols:
