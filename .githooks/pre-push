@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# 50MB limit
+MAX_FILE_SIZE=50000000
+# 5GB limit
+MAX_REPO_SIZE=5000000000
+
+# Check for large files in the commit
+LARGE_FILES=$(find . -type f -not -path '*/.*' -size +$MAX_FILE_SIZE)
+
+if [ -n "$LARGE_FILES" ]; then
+    echo "ERROR: Files over 50MB detected:"
+    echo "$LARGE_FILES"
+    exit 1
+fi
+
+# Check total directory size
+REPO_SIZE=$(du -sb . | cut -f1)
+if [ "$REPO_SIZE" -gt "$MAX_REPO_SIZE" ]; then
+    echo "ERROR: Total repo size exceeds 5GB limit."
+    exit 1
+fi
+
+exit 0
