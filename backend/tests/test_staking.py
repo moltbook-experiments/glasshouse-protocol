@@ -96,7 +96,7 @@ def test_stake_calculation():
     """Test worker stake calculation."""
     from backend.app.reputation import WORKER_REWARD
     
-    # 25% stake should be 22.5 GLS (25% of 90)
+    # 25% stake should be 22.5 REP (25% of 90)
     stake_pct = 25.0
     expected_stake = WORKER_REWARD * (stake_pct / 100.0)
     
@@ -126,11 +126,11 @@ def test_worker_insufficient_balance():
     resp = client.post("/jobs", json=job)
     job_id = resp.json()["id"]
     
-    # Set worker balance to 10 GLS
+    # Set worker balance to 10 REP
     agent_repo = AgentRepository()
     agent_repo.update(MOCK_WORKER, {"balance": 10.0})
     
-    # Try to stake 25% (22.5 GLS) - should fail
+    # Try to stake 25% (22.5 REP) - should fail
     current_mock_agent = {"id": MOCK_WORKER, "is_verified": True}
     result = {
         "output": "test_output",
@@ -142,7 +142,7 @@ def test_worker_insufficient_balance():
 
 
 def test_verifier_stake_cap():
-    """Test that verifier stake is capped at 50 GLS."""
+    """Test that verifier stake is capped at 50 REP."""
     global current_mock_agent
     
     # Create job
@@ -162,7 +162,7 @@ def test_verifier_stake_cap():
     current_mock_agent = {"id": MOCK_WORKER, "is_verified": True}
     client.post(f"/jobs/{job_id}/results", json={"output": "test_output"})
     
-    # Verifier tries to stake 100 GLS (should be rejected)
+    # Verifier tries to stake 100 REP (should be rejected)
     current_mock_agent = {"id": MOCK_VERIFIER1, "is_verified": True}
     result = {
         "output": "test_output",
@@ -170,7 +170,7 @@ def test_verifier_stake_cap():
     }
     resp = client.post(f"/jobs/{job_id}/results", json=result)
     assert resp.status_code == 400
-    assert "cannot exceed 50 GLS" in resp.json()["detail"]
+    assert "cannot exceed 50 REP" in resp.json()["detail"]
 
 
 def test_stake_percentage_validation():
@@ -326,7 +326,7 @@ def test_honest_payment_distribution():
     job_id = resp.json()["id"]
     job_record = JobRepository().get(job_id)
     
-    # Worker submits with 20% stake (18 GLS)
+    # Worker submits with 20% stake (18 REP)
     current_mock_agent = {"id": MOCK_WORKER, "is_verified": True}
     client.post(f"/jobs/{job_id}/results", json={
         "output": "correct_output",
@@ -343,7 +343,7 @@ def test_honest_payment_distribution():
     # Resolve consensus
     result = reputation_service.resolve_honest_consensus(job_id)
     
-    # Worker should get stake back + 90 GLS payment
+    # Worker should get stake back + 90 REP payment
     worker_final = agent_repo.get(MOCK_WORKER)["balance"]
     # Started at 200, deducted 18 stake during submission, paid 90 during submit_result
     # Then refunded 18 + paid 90 again? Let me check the logic...
@@ -373,7 +373,7 @@ def test_dishonest_payment_distribution():
     job_id = resp.json()["id"]
     job_record = JobRepository().get(job_id)
     
-    # Worker submits dishonest work with 30% stake (27 GLS)
+    # Worker submits dishonest work with 30% stake (27 REP)
     current_mock_agent = {"id": MOCK_WORKER, "is_verified": True}
     client.post(f"/jobs/{job_id}/results", json={
         "output": "wrong_output",
@@ -390,7 +390,7 @@ def test_dishonest_payment_distribution():
     # Resolve dishonest consensus
     result = reputation_service.resolve_dishonest_consensus(job_id, job_record)
     
-    # Requester should get refund (100 GLS) + 50% of slashed stake (13.5)
+    # Requester should get refund (100 REP) + 50% of slashed stake (13.5)
     requester_final = agent_repo.get(MOCK_REQUESTER)["balance"]
     # Started at 200, paid 100 during job submission
     # Gets back 100 + 13.5 = 113.5

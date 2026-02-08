@@ -55,7 +55,7 @@ Proof: {
 #### Scenario: Worker commits to their result
 
 - **WHEN** worker submits result with `stake_percentage: 25` (25% of worker payment)
-- **THEN** the system calculates: `stake = 90 GLS * 0.25 = 22.5 GLS`
+- **THEN** the system calculates: `stake = 90 REP * 0.25 = 22.5 REP`
 - **AND** the stake amount is deducted from worker's balance immediately
 - **AND** the stake is held until verification window closes
 - **AND** the result is stored with stake amount recorded
@@ -74,9 +74,9 @@ Proof: {
 
 - **WHEN** verification window closes with consensus = HONEST
 - **THEN** worker receives stake back (added to balance)
-- **AND** worker receives worker payment (90 GLS)
-- **AND** verifier rewards are deducted from requester's 100 GLS payment
-- **AND** total payout = 90 (worker) + 10 (verifier bounties) ≈ 100 GLS
+- **AND** worker receives worker payment (90 REP)
+- **AND** verifier rewards are deducted from requester's 100 REP payment
+- **AND** total payout = 90 (worker) + 10 (verifier bounties) ≈ 100 REP
 
 ### Requirement: Stake Slashed on Dishonest Verdict
 
@@ -84,9 +84,9 @@ Proof: {
 
 - **WHEN** verification window closes with consensus = DISHONEST
 - **THEN** worker loses stake entirely (no refund)
-- **AND** worker receives 0 GLS payment
+- **AND** worker receives 0 REP payment
 - **AND** slashed stake is distributed: 50% to verifiers, 50% to requester
-- **AND** requester receives original 100 GLS refunded + 50% of slashed stake
+- **AND** requester receives original 100 REP refunded + 50% of slashed stake
 - **AND** verifiers share 50% of slashed stake in addition to bounty rewards
 
 ---
@@ -98,7 +98,7 @@ Proof: {
 #### Scenario: Verifier submits verification
 
 - **WHEN** verifier submits result assessment to `/jobs/{job_id}/results`
-- **THEN** the request includes optional `verifier_stake: <amount>` in GLS
+- **THEN** the request includes optional `verifier_stake: <amount>` in REP
 - **AND** the stake is deducted from verifier's balance
 - **AND** the verification is recorded with stake amount
 
@@ -130,9 +130,9 @@ Proof: {
 
 - **WHEN** job is submitted with expected_compute_time and bounty amount
 - **THEN** system assigns verification tier:
-  - **Small** (<50 GLS bounty): 1-2 verifiers required
-  - **Medium** (50-150 GLS bounty): 3-4 verifiers required
-  - **Large** (>150 GLS bounty): 5+ verifiers required
+  - **Small** (<50 REP bounty): 1-2 verifiers required
+  - **Medium** (50-150 REP bounty): 3-4 verifiers required
+  - **Large** (>150 REP bounty): 5+ verifiers required
 - **AND** the tier is recorded with the job
 
 ### Requirement: Verification Window & Consensus
@@ -172,11 +172,11 @@ Proof: {
 - **WHEN** N verifiers submit assessments
 - **THEN** each verifier's bounty = `5.0 * (0.5 ^ rank)` where rank is order of submission
 - **AND** examples:
-  - 1st verifier: 5.0 GLS
-  - 2nd verifier: 2.5 GLS
-  - 3rd verifier: 1.25 GLS
+  - 1st verifier: 5.0 REP
+  - 2nd verifier: 2.5 REP
+  - 3rd verifier: 1.25 REP
   - 4th+ verifiers: 0.625, 0.3125, ... converging to ~0
-- **AND** total verifier bounties sum to ~10 GLS
+- **AND** total verifier bounties sum to ~10 REP
 - **AND** system naturally caps at ~52 verifiers (float precision limit)
 
 ---
@@ -189,16 +189,16 @@ Proof: {
 
 - **WHEN** verification closes
 - **THEN** transaction:
-  - Requester: -100 GLS deducted (already charged at job submission)
-  - Worker: +90 GLS + stake refund
+  - Requester: -100 REP deducted (already charged at job submission)
+  - Worker: +90 REP + stake refund
   - Verifiers: +bounties + stake refunds
-  - Net: Requester pays ~100 GLS, all distributed
+  - Net: Requester pays ~100 REP, all distributed
 
 #### Scenario: Job completes with DISHONEST consensus
 
 - **WHEN** verification closes
 - **THEN** transaction:
-  - Requester: +100 GLS refunded + 50% of worker's slashed stake
+  - Requester: +100 REP refunded + 50% of worker's slashed stake
   - Worker: -stake (slashed, no refund)
   - Verifiers: +bounties + 50% of worker's slashed stake
   - Net: Dishonest worker pays penalty, requester recovers cost

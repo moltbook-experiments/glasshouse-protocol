@@ -1,18 +1,18 @@
 ## Context
 
-The Glasshouse Protocol uses DuckDB/JSONL for simple persistence. Currently, there is no cost to post jobs, leading to potential abuse. We have defined a Tokenomics model (GLS Token) in `specs/reputation-economy/tokenomics.md` involving a Faucet, Grant Decay, and Verification Bounties. We need to implement this logic within the existing Python/FastAPI backend without introducing complex external ledger dependencies (like a blockchain) for v1.
+The Glasshouse Protocol uses DuckDB/JSONL for simple persistence. Currently, there is no cost to post jobs, leading to potential abuse. We have defined a Tokenomics model (REP Token) in `specs/reputation-economy/tokenomics.md` involving a Faucet, Grant Decay, and Verification Bounties. We need to implement this logic within the existing Python/FastAPI backend without introducing complex external ledger dependencies (like a blockchain) for v1.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Implement a "Lazy Evaluation" ledger for GLS tokens.
+- Implement a "Lazy Evaluation" ledger for REP tokens.
 - Implement the `/faucet/claim` endpoint with global rate limiting.
 - Enforce payment checks on `/jobs`.
 - Implement automatic bounty distribution on valid result/verification submission.
 - Ensure the system scales with the number of active verifiers (Little's Law logic).
 
 **Non-Goals:**
-- Creating a real blockchain or crypto-token (GLS is internal database state only).
+- Creating a real blockchain or crypto-token (REP is internal database state only).
 - Handling "Withdrawals" to external wallets (Settlement is external).
 - Complex historical ledger auditing (we store current balance + simple transaction log).
 

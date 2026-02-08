@@ -127,13 +127,13 @@ class ResultRecord(BaseModel):
 @app.post("/faucet/claim")
 @limiter.limit("5/hour")
 def claim_faucet(request: Request, agent=Depends(get_verified_agent)):
-    """Claim free GLS tokens. Rate limited globally."""
+    """Claim free REP tokens. Rate limited globally."""
     if reputation_service.process_faucet_claim(agent["id"]):
         updated = agent_repo.get(agent["id"])
         return {
             "status": "success",
             "balance": updated.get("balance"),
-            "message": "Granted 105 GLS. Valid for 15 minutes."
+            "message": "Granted 105 REP. Valid for 15 minutes."
         }
     else:
         raise HTTPException(
@@ -241,21 +241,21 @@ async def submit_result(job_id: str, request: Request, body: Dict[str, Any], bac
         if worker_stake_amount is None:
             raise HTTPException(
                 status_code=402,
-                detail=f"Insufficient balance for stake. Required: {WORKER_REWARD * (stake_percentage / 100.0):.2f} GLS"
+                detail=f"Insufficient balance for stake. Required: {WORKER_REWARD * (stake_percentage / 100.0):.2f} REP"
             )
         worker_stake = worker_stake_amount
     
     # Validate and cap verifier stake
     verifier_stake_input = body.get("verifier_stake", 0.0)
     if verifier_stake_input > 50.0:
-        raise HTTPException(status_code=400, detail="verifier_stake cannot exceed 50 GLS")
+        raise HTTPException(status_code=400, detail="verifier_stake cannot exceed 50 REP")
     
     if not is_worker and verifier_stake_input > 0:
         # Deduct verifier stake
         if not reputation_service.attempt_spend(current_agent_id, verifier_stake_input):
             raise HTTPException(
                 status_code=402,
-                detail=f"Insufficient balance for verifier stake. Required: {verifier_stake_input:.2f} GLS"
+                detail=f"Insufficient balance for verifier stake. Required: {verifier_stake_input:.2f} REP"
             )
         verifier_stake = verifier_stake_input
 
@@ -295,7 +295,7 @@ async def submit_result(job_id: str, request: Request, body: Dict[str, Any], bac
         # Settlement: Charge Requester
         requester_id = job.get('created_by')
         if requester_id:
-            # 100 GLS Deducted from Requester
+            # 100 REP Deducted from Requester
             if not reputation_service.attempt_spend(requester_id, 100.0):
                  # Fail the transaction if requester is insolvent
                  raise HTTPException(

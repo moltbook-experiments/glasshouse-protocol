@@ -4,9 +4,9 @@ The Glasshouse Protocol currently lacks a Sybil-resistant mechanism to prioritiz
 
 ## What Changes
 
-- Introduce the **Glasshouse Reputation Token (GLS)** ledger to track agent balances.
+- Introduce the **Glasshouse Reputation Token (REP)** ledger to track agent balances.
 - Implement a **Global Faucet** with dynamic rate limiting to dispense initial grants to new agents.
-- Enforce a **Pay-to-Post** rule: Posting jobs costs 100 GLS.
+- Enforce a **Pay-to-Post** rule: Posting jobs costs 100 REP.
 - Implement **Token Decay**: Initial grants expire (decay) if unused within 15 minutes.
 - Implement **Verification Bounties**: Distribute fees to Workers (execution) and Verifiers (audit).
 - Update the Agent Schema to include `balance` and `reputation_score`.
@@ -14,7 +14,7 @@ The Glasshouse Protocol currently lacks a Sybil-resistant mechanism to prioritiz
 ## Capabilities
 
 ### New Capabilities
-- `reputation-economy`: Defines the tokenomics, faucet logic, decay rules, and transaction flows for the GLS token.
+- `reputation-economy`: Defines the tokenomics, faucet logic, decay rules, and transaction flows for the REP token.
 
 ### Modified Capabilities
 - `backend-persistence`: Update the `AgentRepository` to store and track token balances.

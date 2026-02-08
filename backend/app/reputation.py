@@ -5,14 +5,14 @@ import time
 from .db import AgentRepository, ResultRepository
 
 # Constants
-DECAY_RATE_PER_MINUTE = 1.0 / 3.0  # 1 GLS every 3 mins = 0.333/min
+DECAY_RATE_PER_MINUTE = 1.0 / 3.0  # 1 REP every 3 mins = 0.333/min
 FAUCET_GRANT_AMOUNT = 150.0
 JOB_COST = 100.0
 WORKER_REWARD = 90.0
 
 # Verifier Rewards (Geometric Series)
 # Each verifier gets half the previous bounty: 5.0 * (0.5 ^ rank)
-# Sum converges to ~10 GLS (5.0 / (1 - 0.5))
+# Sum converges to ~10 REP (5.0 / (1 - 0.5))
 # Naturally caps at ~52 verifiers (float precision limit: 5 * 0.5^52 ≈ 1e-15)
 VERIFIER_BOUNTY_BASE = 5.0
 VERIFIER_BOUNTY_RATIO = 0.5
@@ -246,7 +246,7 @@ class ReputationService:
         """
         Resolve payments for HONEST consensus.
         - Refund worker stake
-        - Pay worker payment (90 GLS)
+        - Pay worker payment (90 REP)
         - Pay verifier bounties
         - Refund verifier stakes if they voted correctly
         """
@@ -261,7 +261,7 @@ class ReputationService:
         
         if worker_stake > 0:
             self._add_balance(worker_id, worker_stake)  # Refund stake
-        self.reward_worker(worker_id)  # Pay 90 GLS
+        self.reward_worker(worker_id)  # Pay 90 REP
         
         # Pay verifiers
         for idx, verifier_result in enumerate(verifier_results):
@@ -292,7 +292,7 @@ class ReputationService:
         Resolve payments for DISHONEST consensus.
         - Slash worker stake (50% to verifiers, 50% to requester)
         - No worker payment
-        - Refund requester original 100 GLS
+        - Refund requester original 100 REP
         - Pay verifier bounties
         - Refund verifier stakes if they voted correctly (against worker)
         """
@@ -309,7 +309,7 @@ class ReputationService:
         verifier_share = worker_stake * 0.5
         requester_share = worker_stake * 0.5
         
-        # Refund requester (100 GLS + their share of slashed stake)
+        # Refund requester (100 REP + their share of slashed stake)
         if requester_id:
             self._add_balance(requester_id, JOB_COST + requester_share)
         
