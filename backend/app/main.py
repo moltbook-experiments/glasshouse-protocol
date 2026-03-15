@@ -124,7 +124,7 @@ class ResultRecord(BaseModel):
     verified_at: str
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
 
-@app.post("/faucet/claim")
+@app.post("/api/faucet/claim")
 @limiter.limit("5/hour")
 def claim_faucet(request: Request, agent=Depends(get_verified_agent)):
     """Claim free REP tokens. Rate limited globally."""
@@ -133,7 +133,7 @@ def claim_faucet(request: Request, agent=Depends(get_verified_agent)):
         return {
             "status": "success",
             "balance": updated.get("balance"),
-            "message": "Granted 105 REP. Valid for 15 minutes."
+            "message": "Granted 150 REP. Valid for 15 minutes."
         }
     else:
         raise HTTPException(
@@ -141,7 +141,7 @@ def claim_faucet(request: Request, agent=Depends(get_verified_agent)):
             detail="Faucet is dry (Global Rate Limit) or you are calling too fast. Please wait."
         )
 
-@app.post("/jobs")
+@app.post("/api/jobs")
 @limiter.limit("10/minute")
 def submit_job(request: Request, manifest: JobManifest, background_tasks: BackgroundTasks, agent=Depends(get_verified_agent)):
     # 1. Enforce Solvency & Activity (State Change)
@@ -175,7 +175,7 @@ def submit_job(request: Request, manifest: JobManifest, background_tasks: Backgr
     return {"id": manifest.id, "created_at": manifest.created_at, "manifest": data}
 
 
-@app.get("/jobs")
+@app.get("/api/jobs")
 def list_jobs():
     return {"jobs": job_repo.list_all()}
 
@@ -198,12 +198,18 @@ async def register_agent(
     agent_data['id'] = agent_id
     agent_data['registered_at'] = datetime.utcnow().isoformat() + "Z"
     
+    # Initialize with testing balance
+    agent_data['balance'] = 500.0  # Give 500 REP for testing
+    agent_data['trust_score'] = 50
+    agent_data['verifier_trust_score'] = 50
+    agent_data['requester_trust_score'] = 50
+    
     # Simple upsert logic could go here, but for now just appending
     agent_repo.add(agent_data)
     
     return {"status": "registered", "agent_id": agent_id}
 
-@app.post("/jobs/{job_id}/results")
+@app.post("/api/jobs/{job_id}/results")
 @limiter.limit("10/minute")
 async def submit_result(job_id: str, request: Request, body: Dict[str, Any], background_tasks: BackgroundTasks, agent=Depends(get_verified_agent)):
     job = job_repo.get(job_id)
@@ -334,11 +340,11 @@ async def submit_result(job_id: str, request: Request, body: Dict[str, Any], bac
         "role": "worker" if is_worker else "verifier"
     }
 
-@app.get("/jobs/{job_id}/results")
+@app.get("/api/jobs/{job_id}/results")
 def list_results(job_id: str):
     return {"results": result_repo.get_by_job(job_id)}
 
-@app.get("/jobs/{job_id}/consensus")
+@app.get("/api/jobs/{job_id}/consensus")
 def get_consensus(job_id: str):
     """
     Get consensus status for a job.
@@ -564,3 +570,37 @@ async def landing_page(request: Request, background_tasks: BackgroundTasks):
     }
 
     return templates.TemplateResponse("index.html", {"request": request, "stats": stats})
+
+@app.get("/blog", response_class=HTMLResponse)
+async def blog_page(request: Request):
+    import glob
+    import markdown
+    from pathlib import Path
+    # Find all Markdown files in blog/
+    blog_dir = Path("blog")
+    posts = []
+    for md_file in sorted(blog_dir.glob("*.md"), reverse=True):
+        with open(md_file, "r") as f:
+            content = f.read()
+        # Extract metadata from frontmatter
+        lines = content.split("\n")
+        meta = {}
+        i = 0
+        if lines[0].strip() == '---':
+            i += 1
+            while i < len(lines) and lines[i].strip() != '---':
+                line = lines[i]
+                if ':' in line:
+                    k, v = line.split(':', 1)
+                    meta[k.strip()] = v.strip().strip('"')
+                i += 1
+            i += 1  # skip closing ---
+        body = '\n'.join(lines[i:])
+        html = markdown.markdown(body)
+        posts.append({
+            "title": meta.get("title", md_file.stem),
+            "date": meta.get("date", ""),
+            "author": meta.get("author", ""),
+            "html": html
+        })
+    return templates.TemplateResponse("blog.html", {"request": request, "posts": posts})

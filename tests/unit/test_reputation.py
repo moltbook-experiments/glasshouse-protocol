@@ -71,7 +71,7 @@ def test_faucet_claim(rep_service, isolate_db):
     assert success is True
     
     updated = repo.get("needy")
-    assert updated["balance"] == 105.0 # FAUCET_GRANT_AMOUNT
+    assert updated["balance"] == 150.0 # FAUCET_GRANT_AMOUNT
     assert updated["last_grant"] is not None
 
 def test_rewards(rep_service, isolate_db):

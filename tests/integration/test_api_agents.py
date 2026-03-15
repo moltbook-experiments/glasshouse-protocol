@@ -17,15 +17,17 @@ async def test_agent_registration(async_client: AsyncClient):
 async def test_submit_result(async_client: AsyncClient):
     # Setup: Register, Faucet, Job
     await async_client.post("/agents/onboard", json={})
-    await async_client.post("/faucet/claim")
+    await async_client.post("/api/faucet/claim")
     
     job_payload = {
         "repo": "user/repo", 
         "commit": "c1", 
         "input_url": "u1", 
-        "entrypoint": "e1"
+        "entrypoint": "e1",
+        "expected_compute_time_seconds": 300,
+        "verification_tier": "small"
     }
-    resp = await async_client.post("/jobs", json=job_payload)
+    resp = await async_client.post("/api/jobs", json=job_payload)
     assert resp.status_code == 200
     job_id = resp.json()["id"]
     
@@ -37,6 +39,6 @@ async def test_submit_result(async_client: AsyncClient):
     }
     
     # Submit to correct endpoint
-    path = f"/jobs/{job_id}/results"
+    path = f"/api/jobs/{job_id}/results"
     resp = await async_client.post(path, json=result_payload)
     assert resp.status_code == 200, f"Failed to submit result: {resp.text}"

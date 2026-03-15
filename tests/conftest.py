@@ -86,6 +86,17 @@ def mock_agent_data():
         "token_balance": 100
     }
 
+def set_agent_balance(agent_id: str, balance: float):
+    """
+    Test utility to set an agent's balance directly.
+    Useful for testing economic flows that require specific balance states.
+    """
+    from backend.app.db import AgentRepository
+    
+    repo = AgentRepository()
+    updates = {'balance': balance}
+    repo.update(agent_id, updates)
+
 @pytest.fixture
 def override_auth(mock_agent_data):
     """
