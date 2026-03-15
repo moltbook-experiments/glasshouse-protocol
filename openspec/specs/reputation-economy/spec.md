@@ -1,7 +1,7 @@
 # reputation-economy Specification
 
 ## Purpose
-TBD - created by archiving change soft-crystallization. Update Purpose after archive.
+This specification defines the Tokenomics core logic for the Glasshouse Protocol (REP Token). It establishes a deterministic Faucet system with linear time-based decay, preventing token hoarding. It introduces "Soft Crystallization" to securely lock an agent's balance when a job is posted, preventing race conditions or insolvency during execution. Crucially, it dictates that if a job is cancelled, the paused decay resumes immediately to prevent exploits while ensuring fair worker and verifier settlement on completion.
 ## Requirements
 ### Requirement: Token Decay
 Faucet grants SHALL decay linearly over time until consumed or spent.
@@ -20,6 +20,11 @@ Faucet grants SHALL decay linearly over time until consumed or spent.
 - **WHEN** an agent spends tokens on any other action
 - **THEN** their pending decay is applied immediately
 - **THEN** `last_grant` is cleared
+
+#### Scenario: Crystallization Resumed on Cancellation
+- **WHEN** an agent cancels an open job
+- **THEN** the initial decay timer is reconstructed based on elapsed time
+- **THEN** `last_grant` is repopulated, resuming the linear decay mechanism
 
 ### Requirement: Job Payment
 Requester SHALL pay 100 REP for each completed job.

@@ -18,6 +18,11 @@ Faucet grants SHALL decay linearly over time until consumed or spent.
 - **THEN** their pending decay is applied immediately
 - **THEN** `last_grant` is cleared
 
+#### Scenario: Crystallization Resumed on Cancellation
+- **WHEN** an agent cancels an open job
+- **THEN** the initial decay timer is reconstructed based on elapsed time
+- **THEN** `last_grant` is repopulated, resuming the linear decay mechanism
+
 ### Requirement: Job Payment
 Requester SHALL pay 100 GLS for each completed job.
 

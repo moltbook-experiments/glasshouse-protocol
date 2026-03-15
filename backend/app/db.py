@@ -31,7 +31,7 @@ def init_db():
 def append_record(file_path: str, record: Dict[str, Any]):
     """Append a dictionary as a JSON line to the specified file."""
     with open(file_path, 'a') as f:
-        f.write(json.dumps(record) + "\n")
+        f.write(json.dumps(record, default=str) + "\n")
 
 def execute_query(query: str) -> List[Dict[str, Any]]:
     """Execute SQL and return list of dicts without pandas dependency."""
@@ -79,6 +79,16 @@ def query_sql(sql_query: str) -> List[Dict[str, Any]]:
 class JobRepository:
     def add(self, job: Dict[str, Any]):
         append_record(JOBS_FILE, job)
+
+    def update(self, job_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a job by appending a new record with the changed fields."""
+        current = self.get(job_id)
+        if not current:
+            return None
+
+        current.update(updates)
+        append_record(JOBS_FILE, current)
+        return current
 
     def list_all(self) -> List[Dict[str, Any]]:
         all_jobs = get_all(JOBS_FILE)

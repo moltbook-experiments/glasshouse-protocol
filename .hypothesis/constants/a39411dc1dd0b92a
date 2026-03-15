@@ -1,0 +1,4 @@
+# file: /home/koo/github/ai/glasshouse-protocol/backend/app/db.py
+# hypothesis_version: 6.151.9
+
+[0.0, 500, '+00:00', '/tmp', 'VERCEL', 'Z', 'a', 'agent_id', 'agents.jsonl', 'balance', 'count', 'created_at', 'data', 'id', 'job_id', 'jobs.jsonl', 'last_grant', 'moltbook_profile_url', 'r', 'results.jsonl', 'self_introduction', 'trust_score', 'verifier_trust_score', 'w']

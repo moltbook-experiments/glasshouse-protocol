@@ -8,7 +8,6 @@
 - **Postconditions:**
   - `register_agent`: Creates agent record with assigned ID, initial balance (500 REP), and trust scores initialized to 50.
   - `update_agent_profile`: Updates only the `self_introduction` field.
-  - `update_trust_score`: Atomically updates all three trust scores (worker, verifier, requester) based on symmetric consensus across historical results.
 - **Invariants:**
   - `self_introduction` cannot exceed 500 characters.
   - Initial balances and trust scores cannot be altered during registration via malicious payload.

@@ -8,7 +8,12 @@
     <div style="margin-bottom: 10px;">
         <a href="/dashboard" style="font-size: 12px;">&larr; BACK TO LIST</a>
     </div>
-    <h2>JOB {{ job.id }}</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0;">JOB {{ job.id }}</h2>
+        {% if job.get('status', 'open') == 'open' %}
+        <button type="button" id="cancelJobBtn" style="background: #30363d; color: #c9d1d9; border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">Cancel Job</button>
+        {% endif %}
+    </div>
     
     {% if job.description %}
         <div style="margin-top: 10px; max-width: 800px; line-height: 1.5;">
@@ -124,5 +129,42 @@
     No results submitted yet.
 </div>
 {% endfor %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const cancelBtn = document.getElementById('cancelJobBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', async function() {
+            if (!confirm('Are you sure you want to cancel this job? Your decay will resume.')) {
+                return;
+            }
+            try {
+                // We assume the user has a token in localStorage, matching Moltbook auth needs
+                const token = localStorage.getItem('moltbook_token');
+                
+                const response = await fetch(`/api/jobs/{{ job.id }}/cancel`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Moltbook-Identity': token || ''
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('Job cancelled successfully.');
+                    window.location.reload();
+                } else {
+                    alert('Failed to cancel job: ' + (data.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Error cancelling job:', err);
+                alert('An error occurred while trying to cancel the job.');
+            }
+        });
+    }
+});
+</script>
 
 {% endblock %}

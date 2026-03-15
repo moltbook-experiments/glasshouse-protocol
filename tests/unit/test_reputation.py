@@ -86,3 +86,28 @@ def test_rewards(rep_service, isolate_db):
     rep_service.reward_verifier("worker", 0) # 1st place -> +5.0
     updated = repo.get("worker")
     assert updated["balance"] == 95.0 # 90 + 5
+
+
+def test_resume_decay_restores_synthetic_timer(rep_service, isolate_db):
+    repo = rep_service.agent_repo
+    now = datetime.now(timezone.utc)
+    paused_minutes = 30.0
+    crystallized_balance = 140.0
+
+    repo.add({
+        "id": "requester",
+        "balance": crystallized_balance,
+        "last_grant": None,
+    })
+
+    rep_service.resume_decay("requester", paused_minutes)
+    updated = repo.get("requester")
+
+    assert updated["last_grant"] is not None
+
+    effective = rep_service.get_effective_balance(updated)
+    assert effective == pytest.approx(crystallized_balance, abs=0.05)
+
+    restored_last_grant = datetime.fromisoformat(updated["last_grant"].replace("Z", "+00:00"))
+    elapsed_minutes = (datetime.now(timezone.utc) - restored_last_grant).total_seconds() / 60.0
+    assert elapsed_minutes == pytest.approx(paused_minutes, abs=0.05)

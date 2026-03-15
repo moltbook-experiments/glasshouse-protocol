@@ -9,10 +9,20 @@ from .core_logic.reputation_math import (
     calculate_verifier_bounty,
     calculate_consensus as math_calculate_consensus,
     calculate_worker_stake_deduction,
+    DECAY_RATE_PER_MINUTE,
     FAUCET_GRANT_AMOUNT,
     JOB_COST,
     WORKER_REWARD
 )
+
+
+def _parse_timestamp(timestamp: Optional[str]) -> Optional[datetime]:
+    if not timestamp:
+        return None
+    try:
+        return datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+    except Exception:
+        return None
 
 class TokenBucket:
     """In-memory Token Bucket for rate limiting."""
@@ -53,19 +63,20 @@ class ReputationService:
     def get_effective_balance(self, agent: Dict) -> float:
         """Calculate balance with pending decay applied using pure function."""
         current_balance = float(agent.get('balance', 0.0))
-        last_grant_str = agent.get('last_grant')
-        
-        if not last_grant_str:
-            last_grant_time = None
-        else:
-            try:
-                last_grant_time = datetime.fromisoformat(last_grant_str.replace('Z', '+00:00'))
-            except Exception as e:
-                print(f"Error parsing date: {e}")
-                last_grant_time = None
+        last_grant_time = _parse_timestamp(agent.get('last_grant'))
                 
         now_time = datetime.now(timezone.utc)
         return calculate_effective_balance(current_balance, last_grant_time, now_time)
+
+    def get_decay_elapsed_minutes(self, agent: Dict, now_time: Optional[datetime] = None) -> Optional[float]:
+        """Return elapsed decay minutes for an agent with an active grant timer."""
+        last_grant_time = _parse_timestamp(agent.get('last_grant'))
+        if last_grant_time is None:
+            return None
+
+        now_time = now_time or datetime.now(timezone.utc)
+        elapsed_minutes = (now_time - last_grant_time).total_seconds() / 60.0
+        return max(0.0, elapsed_minutes)
 
     def process_faucet_claim(self, agent_id: str) -> bool:
         """Process a faucet claim. Enforces Global Rate Limit."""
@@ -112,6 +123,47 @@ class ReputationService:
         self.agent_repo.update(agent_id, updates)
         return effective
 
+    def crystallize_balance_for_job(self, agent_id: str) -> tuple[float, Optional[float]]:
+        """Crystallize balance and capture paused decay elapsed minutes for later restoration."""
+        agent = self.agent_repo.get(agent_id)
+        if not agent:
+            return 0.0, None
+
+        now_time = datetime.now(timezone.utc)
+        elapsed_minutes = self.get_decay_elapsed_minutes(agent, now_time)
+        effective = calculate_effective_balance(
+            float(agent.get('balance', 0.0)),
+            _parse_timestamp(agent.get('last_grant')),
+            now_time,
+        )
+
+        self.agent_repo.update(agent_id, {
+            'balance': effective,
+            'last_grant': None,
+        })
+        return effective, elapsed_minutes
+
+    def resume_decay(self, agent_id: str, paused_minutes: Optional[float]) -> Optional[Dict[str, Any]]:
+        """Restore linear decay after a crystallized job is canceled."""
+        if paused_minutes is None:
+            return None
+
+        agent = self.agent_repo.get(agent_id)
+        if not agent:
+            return None
+
+        if agent.get('last_grant'):
+            return agent
+
+        now_time = datetime.now(timezone.utc)
+        restored_last_grant = now_time - timedelta(minutes=max(0.0, paused_minutes))
+        restored_balance = float(agent.get('balance', 0.0)) + (max(0.0, paused_minutes) * DECAY_RATE_PER_MINUTE)
+
+        return self.agent_repo.update(agent_id, {
+            'balance': restored_balance,
+            'last_grant': restored_last_grant.isoformat().replace('+00:00', 'Z'),
+        })
+
     def attempt_spend(self, agent_id: str, amount: float) -> bool:
         """Try to deduct amount. Crystallizes decay."""
         agent = self.agent_repo.get(agent_id)
@@ -119,15 +171,7 @@ class ReputationService:
             return False
             
         current_balance = float(agent.get('balance', 0.0))
-        last_grant_str = agent.get('last_grant')
-        
-        if not last_grant_str:
-            last_grant_time = None
-        else:
-            try:
-                last_grant_time = datetime.fromisoformat(last_grant_str.replace('Z', '+00:00'))
-            except:
-                last_grant_time = None
+        last_grant_time = _parse_timestamp(agent.get('last_grant'))
                 
         now_time = datetime.now(timezone.utc)
         

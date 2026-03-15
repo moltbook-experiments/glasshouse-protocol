@@ -14,9 +14,10 @@
   - `reward_verifier`: Adds `5.0 * (0.5 ^ rank)` REP to verifier balance.
   - `stake_deduct_worker`: Deducts requested % of 90 REP from worker's available (crystallized) balance.
   - `calculate_consensus`: Must return `HONEST` if >= 67% (supermajority) of verifiers agree with the worker. Otherwise, it returns `DISHONEST`.
+  - `update_trust_score`: Atomically updates all three trust scores (worker, verifier, requester) based on symmetric consensus across historical results, triggered automatically in the background after result submissions.
 - **Invariants:**
-  - An agent's effective balance cannot drop below 0.0 under any circumstances.
-  - Decay only reduces the balance added by `faucet`. Earned/crystallized balance remains stable once a transaction forces crystallization (unless > 150 is decayed prior).
+  - An agent's effective balance cannot drop below 0.0 under any circumstances. If an operation tries to deduct into a negative balance, the operation is not carried out.
+  - **Soft Crystallization**: Faucet grants decay linearly over time until consumed or spent. When an agent submits a job or spends tokens on any other action, their pending decay is applied immediately, and `last_grant` is cleared, halting further decay indefinitely until the agent cancels the job.
   - Verifier bounty sum converges and practically caps around 10 REP per job.
   - Faucet claims are globally rate-limited according to active verifier count.
 
@@ -31,6 +32,7 @@
 3. Worker stakes more than their effective balance.
 4. Total decay exceeds current balance.
 5. Large number of verifiers causes floating point underflow in geometric series reward.
+6. A job is cancelled/aborted (Decay resumes for the requester to prevent Soft Crystallization exploits).
 
 ### Non-Functional Requirements
 - **Performance:** Decay calculation must be O(1) time complexity.

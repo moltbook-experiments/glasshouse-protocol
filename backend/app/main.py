@@ -30,6 +30,36 @@ agent_repo = AgentRepository()
 result_repo = ResultRepository()
 reputation_service = ReputationService()
 
+
+def _is_open_unworked_job(job: Dict[str, Any]) -> bool:
+    job_id = str(job.get('id', ''))
+    if not job_id:
+        return False
+    if job.get('status', 'open') != 'open':
+        return False
+    return len(result_repo.get_by_job(job_id)) == 0
+
+
+def _get_open_jobs_for_requester(requester_id: str, exclude_job_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    open_jobs = []
+    for job in job_repo.list_all():
+        job_id = str(job.get('id', ''))
+        if exclude_job_id and job_id == exclude_job_id:
+            continue
+        if job.get('created_by') != requester_id:
+            continue
+        if _is_open_unworked_job(job):
+            open_jobs.append(job)
+    return open_jobs
+
+
+def _get_requester_decay_hold_minutes(requester_id: str) -> Optional[float]:
+    for job in _get_open_jobs_for_requester(requester_id):
+        hold_minutes = job.get('decay_hold_minutes')
+        if hold_minutes is not None:
+            return float(hold_minutes)
+    return None
+
 # Middleware for Sync
 class GitHubSyncMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -146,7 +176,9 @@ def claim_faucet(request: Request, agent=Depends(get_verified_agent)):
 def submit_job(request: Request, manifest: JobManifest, background_tasks: BackgroundTasks, agent=Depends(get_verified_agent)):
     # 1. Enforce Solvency & Activity (State Change)
     # Crystallize balance to stop decay chain (Proof of Submission)
-    current_bal = reputation_service.crystallize_balance(agent["id"])
+    current_bal, decay_hold_minutes = reputation_service.crystallize_balance_for_job(agent["id"])
+    if decay_hold_minutes is None:
+        decay_hold_minutes = _get_requester_decay_hold_minutes(agent["id"])
     
     COST = 100.0
     if current_bal < COST:
@@ -161,6 +193,8 @@ def submit_job(request: Request, manifest: JobManifest, background_tasks: Backgr
     
     # Store owner info
     data['created_by'] = agent['id']
+    data['status'] = 'open'
+    data['decay_hold_minutes'] = decay_hold_minutes
     
     # Map verification tier to required verifier count
     tier_map = {
@@ -173,6 +207,41 @@ def submit_job(request: Request, manifest: JobManifest, background_tasks: Backgr
     job_repo.add(data)
     background_tasks.add_task(try_sync_db)
     return {"id": manifest.id, "created_at": manifest.created_at, "manifest": data}
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str, background_tasks: BackgroundTasks, agent=Depends(get_verified_agent)):
+    job = job_repo.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.get('created_by') != agent['id']:
+        raise HTTPException(status_code=403, detail="Forbidden: You can only cancel your own jobs")
+
+    if job.get('status', 'open') != 'open':
+        raise HTTPException(status_code=409, detail="Only open jobs can be canceled")
+
+    if result_repo.get_by_job(job_id):
+        raise HTTPException(status_code=409, detail="Cannot cancel a job after work has started")
+
+    cancelled_at = datetime.utcnow().isoformat() + "Z"
+    job_repo.update(job_id, {
+        'status': 'cancelled',
+        'cancelled_at': cancelled_at,
+    })
+
+    remaining_open_jobs = _get_open_jobs_for_requester(agent['id'], exclude_job_id=job_id)
+    decay_resumed = False
+    if not remaining_open_jobs and job.get('decay_hold_minutes') is not None:
+        reputation_service.resume_decay(agent['id'], float(job['decay_hold_minutes']))
+        decay_resumed = True
+
+    background_tasks.add_task(try_sync_db)
+    return {
+        'status': 'cancelled',
+        'job_id': job_id,
+        'decay_resumed': decay_resumed,
+    }
 
 
 @app.get("/api/jobs")
