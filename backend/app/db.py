@@ -2,7 +2,9 @@ import duckdb
 import json
 import os
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+from .core_logic.trust_math import get_worker_trust_score, get_verifier_trust_score, get_requester_trust_score
 
 # Define data directory relative to this file or project root
 # Assuming this file is in backend/app/db.py, we want backend/data
@@ -182,102 +184,23 @@ class AgentRepository:
         return current
 
 def get_worker_trust_score_sql(agent_id: str) -> int:
-    """
-    Calculate Worker Trust Score using Symmetric Consensus for work quality.
-    
-    A worker's trust score is based on how many distinct agents agreed with 
-    their submitted work output. Higher score = more agents validated their work quality.
-    
-    Query logic:
-    - Find jobs where this agent was the first to submit (identified by earliest created_at per job)
-    - Count distinct other agents who submitted the same output on those jobs
-    """
-    if not os.path.exists(RESULTS_FILE) or os.path.getsize(RESULTS_FILE) == 0:
-        return 0
     try:
-        query = f"""
-            WITH agent_as_worker AS (
-                -- Find all jobs where agent_id was the first to submit (worker role)
-                SELECT r.job_id, r.output
-                FROM read_json_auto('{RESULTS_FILE}') r
-                WHERE r.agent_id = '{agent_id}'
-                  AND r.job_id IN (
-                      SELECT job_id 
-                      FROM read_json_auto('{RESULTS_FILE}')
-                      WHERE job_id IS NOT NULL
-                      QUALIFY ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at ASC) = 1 
-                        AND agent_id = '{agent_id}'
-                  )
-            )
-            SELECT COUNT(DISTINCT other.agent_id) as score
-            FROM agent_as_worker w
-            JOIN read_json_auto('{RESULTS_FILE}') other
-              ON w.job_id = other.job_id 
-              AND w.output = other.output
-              AND other.agent_id != '{agent_id}'
-        """
-        res = execute_query(query)
-        return int(res[0]['score']) if res else 0
+        all_results = get_all(RESULTS_FILE)
+        return get_worker_trust_score(agent_id, all_results)
     except Exception as e:
         print(f"Worker trust score calculation failed: {e}")
         return 0
 
 def get_verifier_trust_score_sql(agent_id: str) -> int:
-    """
-    Calculate Verifier Trust Score using Symmetric Consensus for verification skill.
-    
-    A verifier's trust score is based on how many distinct agents agreed with 
-    their submitted verification (when they were not the original worker). 
-    Higher score = more agents validated their verification accuracy.
-    
-    Query logic:
-    - Find submissions where this agent was NOT the first to submit (verifier role)
-    - Count distinct other agents who submitted the same output on those jobs
-    """
-    if not os.path.exists(RESULTS_FILE) or os.path.getsize(RESULTS_FILE) == 0:
-        return 0
     try:
-        query = f"""
-            WITH agent_verifications AS (
-                -- Find all results where agent_id was NOT the first to submit (verifier role)
-                SELECT r.job_id, r.output
-                FROM read_json_auto('{RESULTS_FILE}') r
-                WHERE r.agent_id = '{agent_id}'
-                  AND r.job_id NOT IN (
-                      SELECT job_id 
-                      FROM read_json_auto('{RESULTS_FILE}')
-                      WHERE job_id IS NOT NULL
-                      QUALIFY ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at ASC) = 1
-                        AND agent_id = '{agent_id}'
-                  )
-            )
-            SELECT COUNT(DISTINCT other.agent_id) as score
-            FROM agent_verifications v
-            JOIN read_json_auto('{RESULTS_FILE}') other
-              ON v.job_id = other.job_id 
-              AND v.output = other.output
-              AND other.agent_id != '{agent_id}'
-        """
-        res = execute_query(query)
-        return int(res[0]['score']) if res else 0
+        all_results = get_all(RESULTS_FILE)
+        return get_verifier_trust_score(agent_id, all_results)
     except Exception as e:
         print(f"Verifier trust score calculation failed: {e}")
         return 0
 
 def get_requester_trust_score_sql(agent_id: str) -> int:
-    """
-    Calculate Requester Trust Score based on acceptance/rejection behavior.
-    
-    v1 Placeholder: Returns 0 for all requesters.
-    
-    Future implementation will track:
-    - Requesters accepting valid work (consensus-verified outputs)
-    - Requesters rejecting valid work (malicious behavior)
-    - Net trust based on acceptance ratio
-    
-    This awaits implementation of result acceptance/rejection flow in a separate change.
-    """
-    return 0
+    return get_requester_trust_score(agent_id, [])
 
 def update_agent_trust_score(agent_id: str):
     """

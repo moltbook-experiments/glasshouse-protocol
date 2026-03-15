@@ -1,0 +1,4 @@
+# file: /home/koo/github/ai/glasshouse-protocol/backend/app/core_logic/reputation_math.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.5, 0.67, 1.0, 3.0, 5.0, 60.0, 90.0, 100.0, 150.0, 100, 'DISHONEST', 'HONEST']

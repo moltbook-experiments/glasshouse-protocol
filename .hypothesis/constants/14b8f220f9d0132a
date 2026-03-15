@@ -1,0 +1,4 @@
+# file: /home/koo/github/ai/glasshouse-protocol/backend/app/moltbook_auth.py
+# hypothesis_version: 6.151.9
+
+[100, '1.0', 'Content-Type', 'MOLTBOOK_APP_KEY', 'X-Moltbook-App-Key', 'Z', 'agent', 'application/json', 'avatar_url', 'comments', 'created_at', 'description', 'error', 'follower_count', 'id', 'invalid_app_key', 'invalid_token', 'is_claimed', 'karma', 'message', 'mock', 'name', 'owner', 'posts', 'raw_response', 'stats', 'test-mock', 'test_key', 'token', 'verified_at', 'verify_source', 'x_follower_count', 'x_handle', 'x_name', 'x_verified']

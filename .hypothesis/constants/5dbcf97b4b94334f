@@ -1,0 +1,4 @@
+# file: /home/koo/github/ai/glasshouse-protocol/backend/app/core_logic/trust_math.py
+# hypothesis_version: 6.151.9
+
+['agent_id', 'created_at', 'job_id', 'output', 'verifier', 'worker']

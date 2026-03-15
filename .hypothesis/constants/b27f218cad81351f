@@ -1,0 +1,4 @@
+# file: /home/koo/github/ai/glasshouse-protocol/backend/app/reputation.py
+# hypothesis_version: 6.151.9
+
+[0.0, 0.5, 1.0, 2.0, 60.0, 3600.0, '+00:00', 'DISHONEST', 'HONEST', 'Z', 'agent_id', 'balance', 'consensus', 'created_by', 'id', 'last_grant', 'output', 'requester_refunded', 'required_verifiers', 'stake_refunded', 'stake_slashed', 'status', 'verifier_stake', 'verifiers_rewarded', 'worker_paid', 'worker_stake']

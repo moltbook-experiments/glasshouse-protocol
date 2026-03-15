@@ -1,0 +1,4 @@
+# file: /home/koo/github/ai/glasshouse-protocol/backend/app/sync_github.py
+# hypothesis_version: 6.151.9
+
+[200, 201, 600, '/', 'Accept', 'Authorization', 'Content-Type', 'GITHUB_REPOSITORY', 'GITHUB_TOKEN', 'VERCEL', 'application/json', 'branch', 'content', 'last_sync_timestamp', 'main', 'message', 'r', 'sha', 'utf-8', 'w']

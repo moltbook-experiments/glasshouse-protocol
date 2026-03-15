@@ -3,19 +3,16 @@ from typing import Optional, Dict, Any
 import threading
 import time
 from .db import AgentRepository, ResultRepository
-
-# Constants
-DECAY_RATE_PER_MINUTE = 1.0 / 3.0  # 1 REP every 3 mins = 0.333/min
-FAUCET_GRANT_AMOUNT = 150.0
-JOB_COST = 100.0
-WORKER_REWARD = 90.0
-
-# Verifier Rewards (Geometric Series)
-# Each verifier gets half the previous bounty: 5.0 * (0.5 ^ rank)
-# Sum converges to ~10 REP (5.0 / (1 - 0.5))
-# Naturally caps at ~52 verifiers (float precision limit: 5 * 0.5^52 ≈ 1e-15)
-VERIFIER_BOUNTY_BASE = 5.0
-VERIFIER_BOUNTY_RATIO = 0.5
+from .core_logic.reputation_math import (
+    calculate_effective_balance,
+    attempt_spend as math_attempt_spend,
+    calculate_verifier_bounty,
+    calculate_consensus as math_calculate_consensus,
+    calculate_worker_stake_deduction,
+    FAUCET_GRANT_AMOUNT,
+    JOB_COST,
+    WORKER_REWARD
+)
 
 class TokenBucket:
     """In-memory Token Bucket for rate limiting."""
@@ -54,26 +51,21 @@ class ReputationService:
         self.faucet_bucket = TokenBucket()
 
     def get_effective_balance(self, agent: Dict) -> float:
-        """Calculate balance with pending decay applied."""
-        balance = float(agent.get('balance', 0.0))
+        """Calculate balance with pending decay applied using pure function."""
+        current_balance = float(agent.get('balance', 0.0))
         last_grant_str = agent.get('last_grant')
         
         if not last_grant_str:
-            return balance
-            
-        try:
-            ts = datetime.fromisoformat(last_grant_str.replace('Z', '+00:00'))
-            now = datetime.now(timezone.utc)
-            
-            elapsed_minutes = (now - ts).total_seconds() / 60.0
-            if elapsed_minutes < 0: elapsed_minutes = 0
-            
-            decay = elapsed_minutes * DECAY_RATE_PER_MINUTE
-            effective = balance - decay
-            return max(0.0, effective)
-        except Exception as e:
-            print(f"Error calculating decay: {e}")
-            return balance
+            last_grant_time = None
+        else:
+            try:
+                last_grant_time = datetime.fromisoformat(last_grant_str.replace('Z', '+00:00'))
+            except Exception as e:
+                print(f"Error parsing date: {e}")
+                last_grant_time = None
+                
+        now_time = datetime.now(timezone.utc)
+        return calculate_effective_balance(current_balance, last_grant_time, now_time)
 
     def process_faucet_claim(self, agent_id: str) -> bool:
         """Process a faucet claim. Enforces Global Rate Limit."""
@@ -126,10 +118,22 @@ class ReputationService:
         if not agent:
             return False
             
-        effective = self.get_effective_balance(agent)
+        current_balance = float(agent.get('balance', 0.0))
+        last_grant_str = agent.get('last_grant')
         
-        if effective >= amount:
-            new_balance = effective - amount
+        if not last_grant_str:
+            last_grant_time = None
+        else:
+            try:
+                last_grant_time = datetime.fromisoformat(last_grant_str.replace('Z', '+00:00'))
+            except:
+                last_grant_time = None
+                
+        now_time = datetime.now(timezone.utc)
+        
+        success, new_balance = math_attempt_spend(current_balance, last_grant_time, now_time, amount)
+        
+        if success:
             updates = {
                 'balance': new_balance,
                 'last_grant': None # spending clears decay status
@@ -143,12 +147,8 @@ class ReputationService:
         self._add_balance(agent_id, WORKER_REWARD)
 
     def reward_verifier(self, agent_id: str, verifier_rank: int):
-        """Reward verifier based on rank (0-indexed). Geometric series: base * (ratio ^ rank).
-        
-        Example: 1st verifier gets 5.0, 2nd gets 2.5, 3rd gets 1.25, etc.
-        Naturally caps at ~52 verifiers where float precision makes bounty unmeasurable.
-        """
-        amount = VERIFIER_BOUNTY_BASE * (VERIFIER_BOUNTY_RATIO ** verifier_rank)
+        """Reward verifier based on rank (0-indexed). Geometric series."""
+        amount = calculate_verifier_bounty(verifier_rank)
         self._add_balance(agent_id, amount)
 
     def _add_balance(self, agent_id: str, amount: float):
@@ -168,13 +168,12 @@ class ReputationService:
     def stake_deduct_worker(self, agent_id: str, stake_percentage: float, worker_payment: float) -> Optional[float]:
         """
         Deduct worker stake based on percentage of payment.
-        Returns stake amount if successful, None if insufficient balance.
+        Returns stake amount if successful, None if insufficient balance or out of bounds.
         """
-        if stake_percentage < 0 or stake_percentage > 100:
+        stake_amount = calculate_worker_stake_deduction(worker_payment, stake_percentage)
+        if stake_amount is None:
             return None
             
-        stake_amount = worker_payment * (stake_percentage / 100.0)
-        
         if self.attempt_spend(agent_id, stake_amount):
             return stake_amount
         return None
@@ -218,29 +217,16 @@ class ReputationService:
 
     def calculate_consensus(self, job_id: str) -> Optional[str]:
         """
-        Calculate consensus based on verifier votes.
-        Returns "HONEST" if >= 50% match worker output, "DISHONEST" otherwise.
-        Returns None if no verifiers yet.
+        Calculate consensus based on verifier votes using pure math logic.
         """
         results = self.result_repo.get_by_job(job_id)
         if len(results) < 2:  # Need worker + at least 1 verifier
             return None
             
-        worker_result = results[0]
-        worker_output = worker_result.get('output')
+        worker_output = results[0].get('output')
+        verifier_outputs = [r.get('output') for r in results[1:]]
         
-        verifier_results = results[1:]
-        if not verifier_results:
-            return None
-            
-        # Count matching outputs
-        matching = sum(1 for r in verifier_results if r.get('output') == worker_output)
-        total_verifiers = len(verifier_results)
-        
-        # >= 50% consensus = HONEST
-        if matching / total_verifiers >= 0.5:
-            return "HONEST"
-        return "DISHONEST"
+        return math_calculate_consensus(worker_output, verifier_outputs)
 
     def resolve_honest_consensus(self, job_id: str) -> Dict[str, Any]:
         """
