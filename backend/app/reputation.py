@@ -41,8 +41,6 @@ class TokenBucket:
             now = time.time()
             elapsed = now - self._last_update
             
-            # Avoid huge time jumps (e.g. system sleep) messing up simple math? 
-            # Standard algo is fine.
             self._last_update = now
             
             rate_per_sec = rate_per_minute / 60.0
@@ -54,10 +52,14 @@ class TokenBucket:
                 return True
             return False
 
+_agent_repo = AgentRepository()
+_result_repo = ResultRepository()
+
+
 class ReputationService:
     def __init__(self):
-        self.agent_repo = AgentRepository()
-        self.result_repo = ResultRepository()
+        self.agent_repo = _agent_repo
+        self.result_repo = _result_repo
         self.faucet_bucket = TokenBucket()
 
     def get_effective_balance(self, agent: Dict) -> float:

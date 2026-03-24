@@ -3,14 +3,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from .moltbook_auth import get_verified_agent
-from .db import init_db, JobRepository, AgentRepository, ResultRepository, get_all, update_agent_trust_score
-from pydantic import BaseModel, Field, constr, validator
+from .db import init_db, JobRepository, AgentRepository, ResultRepository, get_all, update_agent_trust_score, RESULTS_FILE
+from pydantic import BaseModel, Field, constr
 from typing import Optional, List, Dict, Any, Literal
 from uuid import uuid4, UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 from .sync_github import trigger_sync
-from starlette.middleware.base import BaseHTTPMiddleware
 from .reputation import ReputationService, WORKER_REWARD
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -60,28 +59,6 @@ def _get_requester_decay_hold_minutes(requester_id: str) -> Optional[float]:
             return float(hold_minutes)
     return None
 
-# Middleware for Sync
-class GitHubSyncMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        # Background sync trigger - non-blocking preferred but doing simple call here
-        # Ideally use BackgroundTasks, but Middleware runs around request
-        # We push this to a BackgroundTask via FastAPI later or just call it if fast enough
-        # Actually, middleware dispatch is async, so we can't easily add BackgroundTask to response here without messy hacks.
-        # Let's use a utility function call that does the check.
-        # trigger_sync({...}) does its own throttle check.
-        try:
-            if request.method in ["POST", "PUT", "PATCH"]: # Only sync on state change makes sense usually, but user asked for "visit site" too
-                # Mapping local DB files to repo paths
-                # Assuming simple mapping for MVP
-                # db.JOBS_FILE -> backend/data/jobs.jsonl
-                pass 
-                # We will invoke this inside route handlers instead for cleaner control
-        except:
-             pass
-        return response
-
-app.add_middleware(GitHubSyncMiddleware)
 
 def try_sync_db():
     try:
@@ -105,11 +82,6 @@ except RuntimeError:
     pass
 
 templates = Jinja2Templates(directory="backend/templates")
-
-# Initialize Persistent Repositories
-job_repo = JobRepository()
-agent_repo = AgentRepository()
-result_repo = ResultRepository()
 
 @app.on_event("startup")
 def startup_event():
@@ -260,9 +232,6 @@ async def register_agent(
          raise HTTPException(status_code=400, detail="Moltbook identity missing agent ID")
     
     # Save registration data
-    # In a real app we'd merge with existing or create new
-    # For JSONL MVP, we just append or update in memory then save
-    
     agent_data = reg_data.dict()
     agent_data['id'] = agent_id
     agent_data['registered_at'] = datetime.utcnow().isoformat() + "Z"
@@ -273,7 +242,6 @@ async def register_agent(
     agent_data['verifier_trust_score'] = 50
     agent_data['requester_trust_score'] = 50
     
-    # Simple upsert logic could go here, but for now just appending
     agent_repo.add(agent_data)
     
     return {"status": "registered", "agent_id": agent_id}
@@ -380,11 +348,6 @@ async def submit_result(job_id: str, request: Request, body: Dict[str, Any], bac
 
         reputation_service.reward_worker(agent["id"])
     else:
-        # Verifiers get rewards regardless of assignment logic?
-        # Yes, if they verify the worker (assigned or not).
-        # We might need to check if result matches Worker?
-        # MoltbookAuth verified signature, Glasshouse verifies reproducibility.
-        # But here we just assume participation = reward for now (as per v1).
         verifier_rank = len(existing_results) - 1 if existing_results else 0
         reputation_service.reward_verifier(agent["id"], verifier_rank)
 
@@ -489,11 +452,6 @@ def get_consensus(job_id: str):
 
 @app.get("/api/agents/{agent_id}")
 def get_agent_json(agent_id: str):
-    # API endpoint - returns JSON
-    # This logic was looking up historical work.
-    # Current simplistic agent_repo just stores registration.
-    # If we want work history, we query results.
-    # For now, let's just return registration info or 404
     agent = agent_repo.get(agent_id)
     if not agent:
          raise HTTPException(status_code=404, detail="Agent not found")
@@ -596,10 +554,9 @@ async def agent_detail_ui(request: Request, agent_id: str):
 async def agents_list_ui(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(try_sync_db)
     
-    # Simple list for MVP
     try:
         agents = agent_repo.list_all()
-    except:
+    except Exception:
         agents = []
         
     return templates.TemplateResponse("agents.html", {"request": request, "agents": agents})
@@ -609,27 +566,22 @@ async def landing_page(request: Request, background_tasks: BackgroundTasks):
     # Trigger sync check on visit
     background_tasks.add_task(try_sync_db)
 
-    # Simple stats for the landing page
-    # Use Repository methods where possible or direct access helper
     def count_repo(repo):
         try:
-             # Assuming repositories have a file path attribute or we list all
-             return len(repo.list_all())
-        except:
-             return 0
+            return len(repo.list_all())
+        except Exception:
+            return 0
 
     job_count = count_repo(job_repo)
     
-    # Agent Repo doesn't have list_all yet in previous context, but let's try or fallback
     try:
         agent_count = len(agent_repo.list_all())
-    except:
+    except Exception:
         agent_count = 0
-        
+
     try:
-        # Result repo logic
-        result_count = len(get_all(result_repo.RESULTS_FILE)) if hasattr(result_repo, 'RESULTS_FILE') else 0
-    except:
+        result_count = len(get_all(RESULTS_FILE))
+    except Exception:
         result_count = 0
 
     stats = {
@@ -642,10 +594,8 @@ async def landing_page(request: Request, background_tasks: BackgroundTasks):
 
 @app.get("/blog", response_class=HTMLResponse)
 async def blog_page(request: Request):
-    import glob
     import markdown
     from pathlib import Path
-    # Find all Markdown files in blog/
     blog_dir = Path("blog")
     posts = []
     for md_file in sorted(blog_dir.glob("*.md"), reverse=True):

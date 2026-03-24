@@ -19,10 +19,7 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_data():
-    # Reset Agent
     repo = AgentRepository()
-    # Ensure clean slate? 
-    # For simplicitly, just add/ensure existence
     if not repo.get(MOCK_AGENT_ID):
         repo.add({"id": MOCK_AGENT_ID, "balance": 0.0})
     else:
@@ -42,17 +39,17 @@ def test_faucet_flow():
         "entrypoint": "main.py",
         "input_url": "http://input"
     }
-    resp = client.post("/jobs", json=job_payload)
+    resp = client.post("/api/jobs", json=job_payload)
     assert resp.status_code == 402 # Payment Required
-    
+
     # 2. Claim Faucet
-    resp = client.post("/faucet/claim")
+    resp = client.post("/api/faucet/claim")
     assert resp.status_code == 200
     data = resp.json()
     assert data["balance"] == 105.0
-    
-    # 3. Post Job (Should success)
-    resp = client.post("/jobs", json=job_payload)
+
+    # 3. Post Job (Should succeed)
+    resp = client.post("/api/jobs", json=job_payload)
     assert resp.status_code == 200
     
     # 4. Check Balance
@@ -67,10 +64,9 @@ def test_faucet_flow():
 def test_faucet_rate_limit():
     """Test that faucet enforces limits."""
     # 1. Claim
-    resp = client.post("/faucet/claim")
+    resp = client.post("/api/faucet/claim")
     assert resp.status_code == 200
-    
+
     # 2. Immediate Claim (Should 429)
-    # Capacity is 1.0. We consumed 1.0. Refills slowly (1 per min).
-    resp = client.post("/faucet/claim")
+    resp = client.post("/api/faucet/claim")
     assert resp.status_code == 429

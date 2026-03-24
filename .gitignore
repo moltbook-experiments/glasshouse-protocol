@@ -20,6 +20,9 @@ dist/
 # Vercel
 .vercel/
 
+# Desloppify
+.desloppify/
+
 # OS
 .DS_Store
 Thumbs.db

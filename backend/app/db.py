@@ -6,9 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from .core_logic.trust_math import get_worker_trust_score, get_verifier_trust_score, get_requester_trust_score
 
-# Define data directory relative to this file or project root
-# Assuming this file is in backend/app/db.py, we want backend/data
-# If running on Vercel (VERCEL=1), use /tmp to avoid Read-Only Filesystem errors
+# Use /tmp on Vercel (read-only filesystem), otherwise backend/data
 if os.environ.get("VERCEL"):
     DATA_DIR = "/tmp"
 else:
@@ -34,7 +32,7 @@ def append_record(file_path: str, record: Dict[str, Any]):
         f.write(json.dumps(record, default=str) + "\n")
 
 def execute_query(query: str) -> List[Dict[str, Any]]:
-    """Execute SQL and return list of dicts without pandas dependency."""
+    """Execute SQL and return list of dicts."""
     try:
         rel = duckdb.sql(query)
         if not rel:
@@ -45,9 +43,8 @@ def execute_query(query: str) -> List[Dict[str, Any]]:
             results.append(dict(zip(columns, row)))
         return results
     except Exception as e:
-        # If table structure varies or other issues, might fail. 
         print(f"DuckDB query failed: {e}")
-        raise e
+        raise
 
 def get_all(file_path: str) -> List[Dict[str, Any]]:
     """Retrieve all records from a JSONL file using DuckDB."""
@@ -92,37 +89,33 @@ class JobRepository:
 
     def list_all(self) -> List[Dict[str, Any]]:
         all_jobs = get_all(JOBS_FILE)
-        # Filter 48h TTL (The Janitor)
         cutoff = datetime.utcnow() - timedelta(hours=48)
-        # Ensure cutoff is timezone aware if our dates are, or handle properly.
-        # Our dates from main.py are "isoformat() + 'Z'" (String)
-        # Parsing them safely:
         valid_jobs = []
         for j in all_jobs:
             try:
                 c_str = j.get('created_at')
                 if not c_str: continue
-                # Parse "2023-01-01T12:00:00.000000Z" -> timestamp
-                # Simple hack: Remove Z, parse naive, treat as UTC
                 dt = datetime.fromisoformat(c_str.replace("Z", ""))
                 if dt > cutoff:
                     valid_jobs.append(j)
-            except:
+            except (ValueError, TypeError):
                 continue
         return valid_jobs
 
     def get(self, job_id: str) -> Optional[Dict[str, Any]]:
-        # For simple ID lookup, linear scan if file is small, or duckdb query
-        # Using DuckDB for better practice
         if os.path.getsize(JOBS_FILE) == 0:
             return None
         try:
             # Cast id to VARCHAR to handle cases where DuckDB infers UUID type
-            query = f"SELECT * FROM read_json_auto('{JOBS_FILE}') WHERE CAST(id AS VARCHAR) = '{job_id}'"
-            res = execute_query(query)
+            query = f"SELECT * FROM read_json_auto('{JOBS_FILE}') WHERE CAST(id AS VARCHAR) = ?"
+            rel = duckdb.execute(query, [job_id])
+            if not rel:
+                return None
+            columns = rel.columns
+            rows = rel.fetchall()
+            res = [dict(zip(columns, row)) for row in rows]
             return res[0] if res else None
-        except:
-             # fallback
+        except Exception:
             jobs = get_all(JOBS_FILE)
             for j in jobs:
                 if str(j.get('id')) == job_id:
@@ -163,22 +156,23 @@ class AgentRepository:
         return get_all(AGENTS_FILE)
 
     def get(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        # In this simplistic model, latest update might be appended. 
-        # But assuming unique ID for now or we query latest.
         if os.path.getsize(AGENTS_FILE) == 0:
             return None
         try:
-            # Get latest entry for agent? Or just find one?
-            query = f"SELECT * FROM read_json_auto('{AGENTS_FILE}') WHERE CAST(id AS VARCHAR) = '{agent_id}'"
-            res = execute_query(query)
-            # If multiple registers, return last one? Duckdb order preserved?
+            query = f"SELECT * FROM read_json_auto('{AGENTS_FILE}') WHERE CAST(id AS VARCHAR) = ?"
+            rel = duckdb.execute(query, [agent_id])
+            if not rel:
+                return None
+            columns = rel.columns
+            rows = rel.fetchall()
+            res = [dict(zip(columns, row)) for row in rows]
             return res[-1] if res else None
-        except:
-             agents = get_all(AGENTS_FILE)
-             for a in reversed(agents):
-                 if str(a.get('id')) == agent_id:
-                     return a
-             return None
+        except Exception:
+            agents = get_all(AGENTS_FILE)
+            for a in reversed(agents):
+                if str(a.get('id')) == agent_id:
+                    return a
+            return None
 
     def update(self, agent_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update an agent by appending a new record with the changed fields."""
@@ -240,13 +234,12 @@ class ResultRepository:
         append_record(RESULTS_FILE, result)
     
     def update(self, result_id: str, updates: Dict[str, Any]):
-        """Update a result record. Note: JSONL is append-only, so this reads all, modifies, and rewrites."""
+        """Update a result record by rewriting the JSONL file."""
         results = get_all(RESULTS_FILE)
         for r in results:
             if str(r.get('id')) == str(result_id):
                 r.update(updates)
         
-        # Rewrite file (for MVP this is acceptable, for production use proper DB)
         with open(RESULTS_FILE, 'w') as f:
             for r in results:
                 f.write(json.dumps(r) + '\n')
@@ -255,41 +248,47 @@ class ResultRepository:
         if os.path.getsize(RESULTS_FILE) == 0:
              return []
         try:
-             query = f"SELECT * FROM read_json_auto('{RESULTS_FILE}') WHERE CAST(job_id AS VARCHAR) = '{job_id}'"
-             return execute_query(query)
-        except:
-             all_results = get_all(RESULTS_FILE)
-             return [r for r in all_results if str(r.get('job_id')) == job_id]
+            query = f"SELECT * FROM read_json_auto('{RESULTS_FILE}') WHERE CAST(job_id AS VARCHAR) = ?"
+            rel = duckdb.execute(query, [job_id])
+            if not rel:
+                return []
+            columns = rel.columns
+            rows = rel.fetchall()
+            return [dict(zip(columns, row)) for row in rows]
+        except Exception:
+            all_results = get_all(RESULTS_FILE)
+            return [r for r in all_results if str(r.get('job_id')) == job_id]
 
     def get_active_verifier_count(self, minutes: int = 5) -> int:
         """Count unique agents who submitted results in the last N minutes."""
         if os.path.getsize(RESULTS_FILE) == 0:
             return 0
         try:
-            # Use Python for current time to avoid DB timezone mismatches (DuckDB now() is local, App is UTC)
-            # We strip 'Z' and compare as naive timestamps for simplicity since App enforces UTC-Z format.
             cutoff_dt = datetime.utcnow() - timedelta(minutes=minutes)
-            cutoff_str = cutoff_dt.isoformat() # Naive ISO string
+            cutoff_str = cutoff_dt.isoformat()
 
             query = f"""
-                SELECT COUNT(DISTINCT agent_id) as count 
-                FROM read_json_auto('{RESULTS_FILE}') 
-                WHERE CAST(created_at AS TIMESTAMP) > CAST('{cutoff_str}' AS TIMESTAMP)
+                SELECT COUNT(DISTINCT agent_id) as count
+                FROM read_json_auto('{RESULTS_FILE}')
+                WHERE CAST(created_at AS TIMESTAMP) > CAST(? AS TIMESTAMP)
             """
-            res = execute_query(query)
+            rel = duckdb.execute(query, [cutoff_str])
+            if not rel:
+                return 0
+            columns = rel.columns
+            rows = rel.fetchall()
+            res = [dict(zip(columns, row)) for row in rows]
             return res[0]['count'] if res else 0
         except Exception as e:
             print(f"Stats query warning: {e}")
             try:
-                # Basic fallback
-                from datetime import datetime, timedelta, timezone
                 cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
                 results = get_all(RESULTS_FILE)
                 unique = {
-                    r['agent_id'] for r in results 
+                    r['agent_id'] for r in results
                     if 'created_at' in r and datetime.fromisoformat(r['created_at'].replace('Z', '+00:00')) > cutoff
                 }
                 return len(unique)
-            except:
+            except Exception:
                 return 0
 
