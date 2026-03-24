@@ -254,9 +254,10 @@ class ReputationService:
             if verifier_count >= required_verifiers:
                 return True
                 
-        except Exception as e:
-            print(f"Error checking window: {e}")
-            
+        except (ValueError, TypeError) as e:
+            print(f"Error checking verification window: {e}")
+            return False  # fail-safe: keep window open on parse errors
+
         return False
 
     def calculate_consensus(self, job_id: str) -> Optional[str]:

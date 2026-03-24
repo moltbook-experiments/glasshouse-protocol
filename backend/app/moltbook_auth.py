@@ -3,7 +3,7 @@
 # Verifies X-Moltbook-Identity header using Moltbook verify endpoint
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict
 
 from fastapi import Header, HTTPException, status, Request
@@ -61,7 +61,7 @@ async def get_verified_agent(request: Request, x_moltbook_identity: str = Header
             "karma": 100,
             "avatar_url": None,
             "is_claimed": True,
-            "created_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "follower_count": 10,
             "stats": {"posts": 5, "comments": 20},
             "owner": {
@@ -74,7 +74,7 @@ async def get_verified_agent(request: Request, x_moltbook_identity: str = Header
         request.state.agent = mock_agent
         snapshot = {
             "agent": mock_agent,
-            "verified_at": datetime.utcnow().isoformat() + "Z",
+            "verified_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "verify_source": "test-mock",
             "verify_schema_version": "1.0",
             "raw_response": {"mock": True}
@@ -117,7 +117,7 @@ async def get_verified_agent(request: Request, x_moltbook_identity: str = Header
         # build agent_profile_snapshot
         snapshot = {
             "agent": agent_dict,
-            "verified_at": datetime.utcnow().isoformat() + "Z",
+            "verified_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "verify_source": "moltbook-v1-verify-identity",
             "verify_schema_version": "1.0",
             "raw_response": data
