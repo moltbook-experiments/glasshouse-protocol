@@ -28,15 +28,15 @@ class GitHubSyncer:
             with open(self.last_sync_path, 'r') as f:
                 last_ts = float(f.read().strip())
             return (time.time() - last_ts) > self.sync_interval
-        except:
+        except (OSError, ValueError):
             return True
 
     def _update_timestamp(self):
         try:
             with open(self.last_sync_path, 'w') as f:
                 f.write(str(time.time()))
-        except:
-            pass
+        except OSError as e:
+            print(f"Failed to update sync timestamp: {e}")
 
     def sync_file(self, local_path, repo_path):
         """Push a single file to GitHub"""

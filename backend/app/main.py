@@ -1,21 +1,35 @@
-from fastapi import FastAPI, Depends, Request, HTTPException, status, BackgroundTasks
+import glob
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional
+from uuid import UUID, uuid4
+
+import markdown
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
-from .moltbook_auth import get_verified_agent
-from .db import init_db, JobRepository, AgentRepository, ResultRepository, get_all, update_agent_trust_score
 from pydantic import BaseModel, Field, constr, validator
-from typing import Optional, List, Dict, Any, Literal
-from uuid import uuid4, UUID
-from datetime import datetime
-import os
-from .sync_github import trigger_sync
-from starlette.middleware.base import BaseHTTPMiddleware
-from .reputation import ReputationService, WORKER_REWARD
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
+
+from .db import (
+    AGENTS_FILE,
+    JOBS_FILE,
+    RESULTS_FILE,
+    AgentRepository,
+    JobRepository,
+    ResultRepository,
+    init_db,
+    update_agent_trust_score,
+)
+from .moltbook_auth import get_verified_agent
+from .reputation import ReputationService, WORKER_REWARD
+from .sync_github import trigger_sync
 
 # Rate Limiter Setup
 limiter = Limiter(key_func=get_remote_address)
@@ -60,56 +74,25 @@ def _get_requester_decay_hold_minutes(requester_id: str) -> Optional[float]:
             return float(hold_minutes)
     return None
 
-# Middleware for Sync
-class GitHubSyncMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        # Background sync trigger - non-blocking preferred but doing simple call here
-        # Ideally use BackgroundTasks, but Middleware runs around request
-        # We push this to a BackgroundTask via FastAPI later or just call it if fast enough
-        # Actually, middleware dispatch is async, so we can't easily add BackgroundTask to response here without messy hacks.
-        # Let's use a utility function call that does the check.
-        # trigger_sync({...}) does its own throttle check.
-        try:
-            if request.method in ["POST", "PUT", "PATCH"]: # Only sync on state change makes sense usually, but user asked for "visit site" too
-                # Mapping local DB files to repo paths
-                # Assuming simple mapping for MVP
-                # db.JOBS_FILE -> backend/data/jobs.jsonl
-                pass 
-                # We will invoke this inside route handlers instead for cleaner control
-        except:
-             pass
-        return response
-
-app.add_middleware(GitHubSyncMiddleware)
-
 def try_sync_db():
     try:
-        # Determine actual paths from imported repo instances or DB module
-        from .db import JOBS_FILE, AGENTS_FILE, RESULTS_FILE
         file_map = {
             JOBS_FILE: "backend/data/jobs.jsonl",
             AGENTS_FILE: "backend/data/agents.jsonl",
-            RESULTS_FILE: "backend/data/results.jsonl"
+            RESULTS_FILE: "backend/data/results.jsonl",
         }
         trigger_sync(file_map)
     except Exception as e:
         print(f"Sync trigger failed: {e}")
 
 
-# Mount Static Files
+# Mount Static Files (directory may not exist in all environments)
 try:
     app.mount("/static", StaticFiles(directory="backend/static"), name="static")
-except RuntimeError:
-    # already mounted in some contexts or directory missing (create it if missing)
-    pass
+except RuntimeError as e:
+    print(f"Static files not mounted: {e}")
 
 templates = Jinja2Templates(directory="backend/templates")
-
-# Initialize Persistent Repositories
-job_repo = JobRepository()
-agent_repo = AgentRepository()
-result_repo = ResultRepository()
 
 @app.on_event("startup")
 def startup_event():
@@ -136,7 +119,7 @@ class JobManifest(BaseModel):
     expected_compute_time_seconds: int = Field(..., gt=0)
     verification_tier: Literal["small", "medium", "large"]
     metadata: Optional[Dict[str, Any]] = None
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
 
 class ResultRecord(BaseModel):
     id: UUID = Field(default_factory=uuid4)
@@ -152,7 +135,7 @@ class ResultRecord(BaseModel):
     agent_id: str
     agent_snapshot: Dict[str, Any]
     verified_at: str
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
 
 @app.post("/api/faucet/claim")
 @limiter.limit("5/hour")
@@ -224,7 +207,7 @@ def cancel_job(job_id: str, background_tasks: BackgroundTasks, agent=Depends(get
     if result_repo.get_by_job(job_id):
         raise HTTPException(status_code=409, detail="Cannot cancel a job after work has started")
 
-    cancelled_at = datetime.utcnow().isoformat() + "Z"
+    cancelled_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     job_repo.update(job_id, {
         'status': 'cancelled',
         'cancelled_at': cancelled_at,
@@ -248,7 +231,7 @@ def cancel_job(job_id: str, background_tasks: BackgroundTasks, agent=Depends(get
 def list_jobs():
     return {"jobs": job_repo.list_all()}
 
-@app.post("/agents/onboard")
+@app.post("/api/agents/onboard")
 @limiter.limit("10/minute")
 async def register_agent(
     request: Request,
@@ -259,13 +242,9 @@ async def register_agent(
     if not agent_id:
          raise HTTPException(status_code=400, detail="Moltbook identity missing agent ID")
     
-    # Save registration data
-    # In a real app we'd merge with existing or create new
-    # For JSONL MVP, we just append or update in memory then save
-    
     agent_data = reg_data.dict()
     agent_data['id'] = agent_id
-    agent_data['registered_at'] = datetime.utcnow().isoformat() + "Z"
+    agent_data['registered_at'] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     
     # Initialize with testing balance
     agent_data['balance'] = 500.0  # Give 500 REP for testing
@@ -273,7 +252,6 @@ async def register_agent(
     agent_data['verifier_trust_score'] = 50
     agent_data['requester_trust_score'] = 50
     
-    # Simple upsert logic could go here, but for now just appending
     agent_repo.add(agent_data)
     
     return {"status": "registered", "agent_id": agent_id}
@@ -339,7 +317,6 @@ async def submit_result(job_id: str, request: Request, body: Dict[str, Any], bac
     # Validate proof size
     proof_data = body.get("proof")
     if proof_data:
-        import json
         proof_size = len(json.dumps(proof_data))
         if proof_size > 10 * 1024:  # 10KB limit
             raise HTTPException(status_code=413, detail="Proof size exceeds 10KB limit")
@@ -352,7 +329,7 @@ async def submit_result(job_id: str, request: Request, body: Dict[str, Any], bac
         proof=proof_data,
         worker_stake=worker_stake,
         verifier_stake=verifier_stake,
-        verification_window_open_at=datetime.utcnow().isoformat() + "Z" if is_worker else None,
+        verification_window_open_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z") if is_worker else None,
         agent_id=agent["id"],
         agent_snapshot=snapshot,
         verified_at=snapshot["verified_at"]
@@ -380,11 +357,7 @@ async def submit_result(job_id: str, request: Request, body: Dict[str, Any], bac
 
         reputation_service.reward_worker(agent["id"])
     else:
-        # Verifiers get rewards regardless of assignment logic?
-        # Yes, if they verify the worker (assigned or not).
-        # We might need to check if result matches Worker?
-        # MoltbookAuth verified signature, Glasshouse verifies reproducibility.
-        # But here we just assume participation = reward for now (as per v1).
+        # Verifiers earn rewards for participation (v1 — consensus-based filtering in v2)
         verifier_rank = len(existing_results) - 1 if existing_results else 0
         reputation_service.reward_verifier(agent["id"], verifier_rank)
 
@@ -489,11 +462,6 @@ def get_consensus(job_id: str):
 
 @app.get("/api/agents/{agent_id}")
 def get_agent_json(agent_id: str):
-    # API endpoint - returns JSON
-    # This logic was looking up historical work.
-    # Current simplistic agent_repo just stores registration.
-    # If we want work history, we query results.
-    # For now, let's just return registration info or 404
     agent = agent_repo.get(agent_id)
     if not agent:
          raise HTTPException(status_code=404, detail="Agent not found")
@@ -595,57 +563,41 @@ async def agent_detail_ui(request: Request, agent_id: str):
 @app.get("/agents", response_class=HTMLResponse)
 async def agents_list_ui(request: Request, background_tasks: BackgroundTasks):
     background_tasks.add_task(try_sync_db)
-    
-    # Simple list for MVP
     try:
         agents = agent_repo.list_all()
-    except:
+    except Exception:
         agents = []
-        
     return templates.TemplateResponse("agents.html", {"request": request, "agents": agents})
 
 @app.get("/", response_class=HTMLResponse)
 async def landing_page(request: Request, background_tasks: BackgroundTasks):
-    # Trigger sync check on visit
     background_tasks.add_task(try_sync_db)
 
-    # Simple stats for the landing page
-    # Use Repository methods where possible or direct access helper
-    def count_repo(repo):
-        try:
-             # Assuming repositories have a file path attribute or we list all
-             return len(repo.list_all())
-        except:
-             return 0
+    try:
+        job_count = len(job_repo.list_all())
+    except Exception:
+        job_count = 0
 
-    job_count = count_repo(job_repo)
-    
-    # Agent Repo doesn't have list_all yet in previous context, but let's try or fallback
     try:
         agent_count = len(agent_repo.list_all())
-    except:
+    except Exception:
         agent_count = 0
-        
+
     try:
-        # Result repo logic
-        result_count = len(get_all(result_repo.RESULTS_FILE)) if hasattr(result_repo, 'RESULTS_FILE') else 0
-    except:
+        result_count = len(result_repo.get_all_results())
+    except Exception:
         result_count = 0
 
     stats = {
         "jobs": job_count,
         "agents": agent_count,
-        "results": result_count
+        "results": result_count,
     }
 
     return templates.TemplateResponse("index.html", {"request": request, "stats": stats})
 
 @app.get("/blog", response_class=HTMLResponse)
 async def blog_page(request: Request):
-    import glob
-    import markdown
-    from pathlib import Path
-    # Find all Markdown files in blog/
     blog_dir = Path("blog")
     posts = []
     for md_file in sorted(blog_dir.glob("*.md"), reverse=True):
